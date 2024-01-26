@@ -12,3 +12,7 @@ The columns are resizable (there's an invisible "sash" between each column that 
 If you click a tag, it'll show all the verses associated with that tag, and let you associate that tag with synonymous tags, just in case you make a mistake.
 (e.g. maybe you made a tag called "eros" and another tag called "romance" and you want them to actually be the same category).
 
+Known limitations:
+- orphaned tags are left in the database
+- If you create a DB while you have a weird Bible open (e.g. one with the Apocrypha included), and then open the same DB later with a normal bible, the books will all be indexed wrong, which can result in out-of-range errors. This problem won't manifest the same way with verses that include ranges where verse numbers are omitted (e.g. kjv vs niv), but may affect instances where a tag links to a single verse that is omitted, or the last verse in a chapter where a single verse has been omitted (idk).
+  
