@@ -1,0 +1,6 @@
+Download bibles from here:
+http://crosswire.org/sword/modules/ModDisp.jsp?modType=Bibles
+
+Run the sword_to_json.py with these arguments: --source_file KJV.zip --bible_version KJV --output_file new.json
+
+(obviously, replace kjv.zip with your version)
