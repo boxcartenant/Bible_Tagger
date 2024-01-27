@@ -1,6 +1,6 @@
 This is a Bible annotating program. It loads a JSON bible of your choice, (I programmed this around the output of SWORD-to-JSON. A copy of that is included in here), and lets you load/save/create a SQLite database with the following tables:
 
-verses(id, start_verse, end_verse), tags(id, tag), notes(id, note), verse_tags(verse_id, tag_id), verse_notes(verse_id, note_id), tag_notes(tag_id, note_id), tag_tags(tag_id, tag_id).
+verses(), tags(), notes(), verse_tags(), verse_notes(), tag_notes(), tag_tags().
 
 It's written in Python with TKinter, with a 3-column interface:
 - The left column is a tree for navigating books and chapters.
