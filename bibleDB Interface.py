@@ -472,12 +472,12 @@ class CanvasView:
                 #print(verseRef)
                 lineNotPrinted = True
                 #Print the verse number in italics
-                text_object = self.canvas.create_text(x_offset, y_offset, text=str(v), anchor=tk.W, fill = textColor, font = self.italicFont)
+                text_object = self.canvas.create_text(x_offset, y_offset, text=str(v), anchor=tk.NW, fill = textColor, font = self.italicFont)
                 self.canvas.tag_bind(text_object, '<Button-1>', lambda event, item_id=text_object, vref=verseRef, verse=verse, vnum = v: self.on_text_click(event, verse, vref, vnum))
                 v_offset = self.italicFont.measure(str(v)) + textelbowroom + x_offset #offset for the verse, to the right of the verse number.
                 # print the verse; wrap to the size of the middle column
                 for line in wrapText(verse, verse_area_width - v_offset, self.canvasFont):
-                    text_object = self.canvas.create_text(v_offset, y_offset, text=line, anchor=tk.W, fill = textColor, font = self.canvasFont)
+                    text_object = self.canvas.create_text(v_offset, y_offset, text=line, anchor=tk.NW, fill = textColor, font = self.canvasFont)
                     self.canvas.tag_bind(text_object, '<Button-1>', lambda event, item_id=text_object, vref=verseRef, verse=verse, vnum = v: self.on_text_click(event, verse, vref, vnum))
                     y_offset += textlineheight + textlinegap
 
@@ -820,7 +820,7 @@ class OptionsPanel:
                         y_offset += textlineheight + textlinegap*3
                     clicktag = "verse_click_"+str(tagx)+"_"+str(y_offset)
                     self.canvas.create_rectangle(x_offset+tagx, y_offset, x_offset+tagx+button_width, y_offset+textlineheight+textlinegap*2, fill='azure', tags=clicktag)
-                    self.canvas.create_text(x_offset+tagx, y_offset+textlinegap, text=itemText, anchor=tk.NW, font = self.canvasFont, tags=clicktag)
+                    self.canvas.create_text(x_offset+tagx+textelbowroom, y_offset+textlinegap, text=itemText, anchor=tk.NW, font = self.canvasFont, tags=clicktag)
                     self.canvas.tag_bind(clicktag, '<Button-1>', lambda event, payload=xverse: self.tag_verse_click(event, payload))
                     tagx += button_width
                 y_offset += textlineheight + textlinegap*3 + 10
@@ -856,7 +856,7 @@ class OptionsPanel:
         self.options_callback(payload)
         
     def delete_tag(self, event, verse, tag, reftype):
-        answer = messagebox.askyesno("Really delete?", "Do you want remove tag \""+str(tag)+"\"?")
+        answer = messagebox.askyesno("Really delete?", "Do you want to remove tag \""+str(tag)+"\"?")
         if answer:
             if reftype == "verse":
                 bibledb_Lib.delete_verse_tag(open_db_file, verse, tag)
@@ -891,7 +891,7 @@ class OptionsPanel:
         dialog = MultiLineInputDialog(self.master, "Edit Notes")
         new_text = dialog.result
         #print(new_text)
-        if new_text is not None:
+        if new_text is not None and new_text != "":
             self.note_area_text = new_text
             if reftype == "verse":
                 bibledb_Lib.add_verse_note(open_db_file, reference, new_text)
@@ -899,6 +899,15 @@ class OptionsPanel:
                 bibledb_Lib.add_tag_note(open_db_file, reference, new_text)
             self.display_attributes()
             self.cause_canvas_to_refresh()
+        elif new_text == "":
+            answer = messagebox.askyesno("Really delete?", "Do you want to delete this note?")
+            if answer:
+                if reftype == "verse":
+                    bibledb_Lib.delete_verse_note(open_db_file, reference)
+                elif reftype == "tag":
+                    bibledb_Lib.delete_tag_note(open_db_file, reference)
+                self.display_attributes()
+                self.cause_canvas_to_refresh()
     
     ##### DB LOAD SAVE
     def load_db(self, event):
@@ -914,7 +923,7 @@ class OptionsPanel:
                 self.display_attributes()
                 self.cause_canvas_to_refresh()
             else:
-                print("I'm not opening that. It's gotta be a database file with the extension \".bdb\"")
+                print("I'm not opening that. It's gotta be a SQLITE database file with the extension \".bdb\"")
 
     def saveas_db(self, event):
         file_path = filedialog.asksaveasfilename(defaultextension=".bdb", filetypes=[("Sqlite Bible Files", "*.bdb"), ("All files", "*.*")])
@@ -945,6 +954,3 @@ if __name__ == "__main__":
     #main_window = MainWindow(root, data_model)
 
     root.mainloop()
-    
-
-    
