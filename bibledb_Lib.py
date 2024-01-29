@@ -329,6 +329,24 @@ def delete_verse_tag(database_file, verse, tag):
             DELETE FROM verse_tags WHERE verse_id = ? AND tag_id = ?
         ''', (verse_id, tag_id))
 
+        cursor.execute('''
+            SELECT COUNT(*) FROM verse_tags WHERE tag_id = ?
+        ''', (tag_id,))
+
+        remaining_associations = cursor.fetchone()[0]
+
+        cursor.execute('''
+            SELECT COUNT(*) FROM tag_tags WHERE tag1_id = ? or tag2_id = ?
+        ''', (tag_id,tag_id))
+
+        remaining_associations += cursor.fetchone()[0]
+
+        if remaining_associations == 0:
+            # Delete the tag from tags if it's orphaned
+            cursor.execute('''
+                DELETE FROM tags WHERE id = ?
+            ''', (tag_id,))
+
         # Commit the changes
         conn.commit()
         #print(f"Association between verse '{verse}' and tag '{tag}' deleted.")
@@ -394,6 +412,39 @@ def delete_tag_tag(database_file, tag1, tag2):
             DELETE FROM tag_tags WHERE tag1_id = ? AND tag2_id = ?
         ''', (tag1_id, tag2_id))
 
+        cursor.execute('''
+            SELECT COUNT(*) FROM verse_tags WHERE tag_id = ?
+        ''', (tag1_id,))
+        remaining_associations1 = cursor.fetchone()[0]
+
+        cursor.execute('''
+            SELECT COUNT(*) FROM tag_tags WHERE tag1_id = ? or tag2_id = ?
+        ''', (tag1_id,tag1_id))
+        remaining_associations1 += cursor.fetchone()[0]
+
+        if remaining_associations1 == 0:
+            # Delete the tag from tags if it's orphaned
+            cursor.execute('''
+                DELETE FROM tags WHERE id = ?
+            ''', (tag1_id,))
+
+
+        cursor.execute('''
+            SELECT COUNT(*) FROM verse_tags WHERE tag_id = ?
+        ''', (tag2_id,))
+        remaining_associations2 = cursor.fetchone()[0]
+
+        cursor.execute('''
+            SELECT COUNT(*) FROM tag_tags WHERE tag1_id = ? or tag2_id = ?
+        ''', (tag2_id,tag2_id))
+        remaining_associations2 += cursor.fetchone()[0]
+
+        if remaining_associations2 == 0:
+            # Delete the tag from tags if it's orphaned
+            cursor.execute('''
+                DELETE FROM tags WHERE id = ?
+            ''', (tag2_id,))
+
         # Commit the changes
         conn.commit()
         #print(f"Association between verse '{verse}' and tag '{tag}' deleted.")
@@ -444,6 +495,45 @@ def add_verse_note(database_file, verse_ref, note):
     conn.commit()
     conn.close()
 
+def delete_verse_note(database_file, verse):
+    entry = verseNoteEntry(verse, "")
+    # Create or connect to the SQLite database
+    conn = sqlite3.connect(database_file)
+    cursor = conn.cursor()
+    
+    # Get verse ID based on the provided verse reference
+    cursor.execute('''
+        SELECT id FROM verses WHERE start_book = ? AND end_book = ? AND start_chapter = ? AND end_chapter = ? AND start_verse = ? AND end_verse = ?
+        ''',(entry["start_book"],entry["end_book"],entry["start_chapter"],entry["end_chapter"],entry["start_verse"],entry["end_verse"]))
+    verse_id = cursor.fetchone()[0]
+    #print("verse id:",verse_id)
+    
+    cursor.execute('SELECT note_id FROM verse_notes WHERE verse_id = ?', (verse_id,))
+    note_id = cursor.fetchone()[0]
+    #print("note id:",note_id)
+
+    # Check if the verse exists
+    if verse_id and note_id:
+
+        # Delete the association between the tag and verse in verse_tags
+        cursor.execute('''
+            DELETE FROM verse_notes WHERE verse_id = ? AND note_id = ?
+        ''', (verse_id, note_id))
+
+        cursor.execute('''
+            DELETE FROM notes WHERE id = ?
+        ''', (note_id,))
+
+        # Commit the changes
+        conn.commit()
+        #print(f"Association between verse '{verse}' and tag '{tag}' deleted.")
+
+    else:
+        print(f"Verse id '{verse_id}' or note id '{note_id}' not found.")
+
+    # Close the connection
+    conn.close()
+
 
 def add_tag_note(database_file, tag_name, note):
     tag_name = tag_name.lower()
@@ -483,6 +573,43 @@ def add_tag_note(database_file, tag_name, note):
     
     conn.commit()
     conn.close()
+
+
+def delete_tag_note(database_file, tag):
+    # Create or connect to the SQLite database
+    conn = sqlite3.connect(database_file)
+    cursor = conn.cursor()
+    
+    # Get verse ID based on the provided verse reference
+    cursor.execute('SELECT id FROM tags WHERE tag = ?', (tag,))
+    tag_id = cursor.fetchone()[0]
+
+    cursor.execute('SELECT note_id FROM tag_notes WHERE tag_id = ?', (tag_id,))
+    note_id = cursor.fetchone()[0]
+
+    # Check if the verse exists
+    if tag_id and note_id:
+
+        # Delete the association between the tag and verse in verse_tags
+        cursor.execute('''
+            DELETE FROM tag_notes WHERE tag_id = ? AND note_id = ?
+        ''', (tag_id, note_id))
+
+        cursor.execute('''
+            DELETE FROM notes WHERE id = ?
+        ''', (note_id,))
+
+        # Commit the changes
+        conn.commit()
+        #print(f"Association between verse '{verse}' and tag '{tag}' deleted.")
+
+    else:
+        print(f"tag id '{tag_id}' or note id '{note_id}' not found.")
+
+    # Close the connection
+    conn.close()
+
+
 
 ######################
 #STEP 4: READ THE DB
@@ -647,5 +774,3 @@ def find_note_tag_verses(database_file, book, chapter):
     
 
     return combined_verses
-    
-    
