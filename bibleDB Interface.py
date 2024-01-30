@@ -850,6 +850,7 @@ class OptionsPanel:
             self.canvas.tag_bind('save_db_button', '<Button-1>', self.saveas_db)
 
             y_offset += 10 + textlineheight + 2*textelbowroom
+        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
 
     def tag_verse_click(self, event, payload):
         #payload = (startverse, endverse)
