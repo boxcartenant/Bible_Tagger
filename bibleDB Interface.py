@@ -6,6 +6,7 @@ from tkinter.font import Font
 from tkinter import Misc
 from tkinter import simpledialog
 from tkinter import messagebox
+from bibledb_Manager import SecondaryWindow
 
 textlinegap = 2
 windowsize = "1000x600"
@@ -26,7 +27,8 @@ def wrapText(text, width, font):
         else:
             lines.append(line)
             line = word
-    lines.append(line)
+    if line != '':
+        lines.append(line)
     return lines
 
 def combineVRefs(vref1, vref2):
@@ -81,7 +83,7 @@ class MainWindow:
         self.paned_window = ttk.PanedWindow(self.master, orient="horizontal")
         self.paned_window.pack(fill="both", expand=True)
 
-        self.navigation_tree = NavigationTree(self.master, self.paned_window, self.tree_callback)
+        self.navigation_tree = NavigationTree(self.master, self.paned_window, self.tree_callback, self.dbManager_callback)
         self.canvas_view = CanvasView(self.master, self.paned_window, self.canvas_callback)
         self.options_panel = OptionsPanel(self.master, self.paned_window, self.options_callback, self.cause_canvas_to_refresh)
 
@@ -131,8 +133,6 @@ class MainWindow:
         start = bibledb_Lib.parseVerseReference(data[0])
         end = bibledb_Lib.parseVerseReference(data[1])
 
-        
-
         #we don't yet support verse ranges that span books
         self.canvas_view.selected_start_b = bibledb_Lib.book_proper_names[start['sb']]
         self.canvas_view.selected_end_b = bibledb_Lib.book_proper_names[end['eb']]
@@ -150,16 +150,26 @@ class MainWindow:
         #self.canvas_view.display_chapter(reset_scrollbar = True)
         #self.canvas_view.reset_scrollregion()
         
-        1;
+    def dbManager_callback(self, clickdata = None):
+        print("Clickdata:",clickdata)
+        item="tagClick"
+        data = {'ref':clickdata, 'id':None}
+        self.options_panel.display_attributes(item, data)
+        #this function will either focus a tag or a verse, depending on what was clicked in the secondary window
+        self.master.focus_force()
 
 class NavigationTree:
-    def __init__(self, master, paned_window, tree_callback, weight=1):
+    def __init__(self, master, paned_window, tree_callback, dbManager_callback, weight=1):
         self.master = master
         global data_model
+        self.data_model_loaded = False
         self.paned_window = paned_window
         self.tree_item_data = {}
         self.treeFont = Font()
         self.tree_callback = tree_callback
+        self.dbManager_callback = dbManager_callback
+
+        self.secondary_window = None
         
         # Create a frame for the button and tree
         self.tree_frame = ttk.Frame(self.paned_window)
@@ -242,18 +252,34 @@ class NavigationTree:
     
     def open_file_dialog(self):
         global data_model
-        file_path = filedialog.askopenfilename(defaultextension=".json", filetypes=[("JSON Bibles", "*.json"), ("All files", "*.*")])
-        if file_path and file_path[-5:] == '.json':
-            print(f"Selected file: {file_path}")
-            with open(file_path, 'r') as file:
-                content = file.read()
-            data_model = bibledb_Lib.getBibleData(content)
-            #print("dumping output from open_file_dialog")
-            #print(data_model)
-            self.populate_tree(data_model, '')
-        else:
-            print("Invalid file! It's gotta be a json file. Funny thing about this: you could use this program to make notes about any kind of JSON data which is organized in a way similar to a supported Bible JSON file.")
-            
+        if not self.data_model_loaded:#First time clicked, load a bible db.
+            file_path = filedialog.askopenfilename(defaultextension=".json", filetypes=[("JSON Bibles", "*.json"), ("All files", "*.*")])
+            if file_path and file_path[-5:] == '.json':
+                print(f"Selected file: {file_path}")
+                with open(file_path, 'r') as file:
+                    content = file.read()
+                data_model = bibledb_Lib.getBibleData(content)
+                #print("dumping output from open_file_dialog")
+                #print(data_model)
+                self.populate_tree(data_model, '')
+                self.data_model_loaded = True
+                self.open_button.configure(text = "Tag DB Statistics")
+            else:
+                print("Invalid file! It's gotta be a json file. Funny thing about this: you could use this program to make notes about any kind of JSON data which is organized in a way similar to a supported Bible JSON file.")
+        else:#subsequent clicks, open the db manager
+            if self.secondary_window is None or not self.secondary_window.winfo_exists():
+                # Create the secondary window if it doesn't exist or has been destroyed
+
+                self.secondary_window_instance = SecondaryWindow(self.secondary_window, self.dbManager_callback, open_db_file)
+
+                # Add widgets and configure the secondary window as needed
+                # (You can add more widgets or configure the window here)
+            #else:
+                # Toggle the visibility of the secondary window
+                #if self.secondary_window.state() == 'normal':
+                    #self.secondary_window.withdraw()  # Hide the window
+                #else:
+                    #self.secondary_window.deiconify()  # Show the window
 
 class CanvasView:
     def __init__(self, master, paned_window, canvas_callback):
@@ -265,7 +291,6 @@ class CanvasView:
         self.italicFont = Font(size = 10, slant = 'italic')
         self.boldFont = Font(size = 10, weight = 'bold')
         self.italicunderlineFont = Font(size=10, slant='italic', underline=True)
-
 
         self.canvas_frame = ttk.Frame(self.paned_window)
         self.canvas_frame.grid(row=0, column=1, sticky="nsew")
@@ -758,20 +783,21 @@ class OptionsPanel:
                 tag_width =  self.canvasFont.measure(tagname) + 2*textelbowroom
 
                 #wrap tag list
-                if tag_width + xb_width + tagx + x_offset + right_x_offset > panelWidth:
+                if tag_width + xb_width + tagx+1 + x_offset + right_x_offset > panelWidth: #+1 for that thicker line between tags
                     tagx = 0
                     y_offset += textlineheight + textlinegap*3
 
                 #tag delete "X" button.
                 #only do this if this is not a synonym
                 if tag not in synonymlist:
-                    tag_delete_binder = "delete_" + str(tag['id'])
+                    tag_delete_binder = "Delete_" + str(tag['id'])
+                    tagx += 1 #making a thicker line between tag groups
                     self.canvas.create_rectangle(x_offset+tagx, y_offset, x_offset+tagx+xb_width, y_offset+textlineheight+textlinegap*2, fill='coral1', tags=tag_delete_binder)
                     self.canvas.create_text(x_offset+tagx, y_offset+textlinegap, text=" X", anchor=tk.NW, font=self.canvasFont, tags=tag_delete_binder)
                     self.canvas.tag_bind(tag_delete_binder, '<Button-1>', lambda event, verse=self.current_data['ref'], mytag=tag['tag'], reftype = type_to_get: self.delete_tag(event, verse, mytag, reftype))
                     tagx += xb_width
                 #actual tag display
-                tag_display_binder = "display_" + str(tag['id'])
+                tag_display_binder = "Display_" + str(tag['id'])
                 self.canvas.create_rectangle(x_offset+tagx, y_offset, x_offset+tagx+tag_width, y_offset+textlineheight+textlinegap*2, fill='azure', tags=tag_display_binder)
                 self.canvas.create_text(x_offset+tagx, y_offset+textlinegap, text=" " + tag['tag'], anchor=tk.NW, font=self.canvasFont, tags=tag_display_binder)
                 #button event to show tag details in this panel...
@@ -782,7 +808,9 @@ class OptionsPanel:
 
             # CREATE TAG BUTTON ##---- DONE
             # Create a button rectangle.
-            buttonText = "Create Tag"
+            buttonText = "Add Tag"
+            if type_to_get == "tag":
+                buttonText = "Add Tag Synonym"
             button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
             self.create_tag_button_rect = self.canvas.create_rectangle(x_offset, y_offset, x_offset + button_width, y_offset + textlineheight + 2*textelbowroom, fill='azure', tags='create_tag_button')
             self.canvas.create_text(x_offset+textelbowroom, y_offset+textelbowroom, text=buttonText, anchor=tk.NW, font=self.canvasFont, tags = 'create_tag_button')#button text for open db
