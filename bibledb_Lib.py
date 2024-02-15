@@ -615,6 +615,28 @@ def delete_tag_note(database_file, tag):
 #STEP 4: READ THE DB
 ######################
 
+def get_tag_list(database_file):
+    if database_file is None:
+        return []
+    conn = sqlite3.connect(database_file)
+    cursor = conn.cursor()
+
+    cursor.execute("select * from tags")
+
+    column_names = [description[0] for description in cursor.description]
+
+    rows = cursor.fetchall()
+
+    result = []
+    for row in rows:
+        row_dict = dict(zip(column_names, row))
+        result.append(row_dict)
+
+    # Close the connection
+    conn.close()
+    
+    return result
+
 def get_db_stuff(database_file, x_type, y_type, y_value):
     # gets all X's in relation to Y.
     # for example, if X is notes, and Y is verse: select all notes for that verse.
