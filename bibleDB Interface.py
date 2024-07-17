@@ -111,7 +111,7 @@ class MainWindow:
         # You can call the CanvasView methods to update the canvas
         # For example, self.canvas_view.display_attributes(attributes)
         self.canvas_view.display_chapter(item, data, reset_scrollbar)
-        self.canvas_view.reset_scrollregion(item)
+        #self.canvas_view.reset_scrollregion(item)
         
 
     def canvas_callback(self, item, data, shift_key = False):
@@ -133,7 +133,8 @@ class MainWindow:
         start = bibledb_Lib.parseVerseReference(data[0])
         end = bibledb_Lib.parseVerseReference(data[1])
 
-        #we don't yet support verse ranges that span books
+        checkbook = self.canvas_view.selected_start_b #capture this, so we won't reset the canvas view if we're not moving chapters.
+        
         self.canvas_view.selected_start_b = bibledb_Lib.book_proper_names[start['sb']]
         self.canvas_view.selected_end_b = bibledb_Lib.book_proper_names[end['eb']]
         self.canvas_view.selected_start_c = start['sc']
@@ -143,7 +144,9 @@ class MainWindow:
 
         #navigate to the first verse in the range
         navtreedata = "/"+bibledb_Lib.book_proper_names[start['sb']]+"/Ch "+start['sc']
-        self.navigation_tree.select_item(navtreedata)
+
+        scrollreset = checkbook != self.canvas_view.selected_start_b
+        self.navigation_tree.select_item(navtreedata, scrollreset)
         
         self.options_panel.display_attributes("verseClick", {"verse": "This part of the code was never implemented", "ref": combineVRefs(data[0],data[1])}, False)
         self.options_panel.reset_scrollregion(None)
@@ -151,7 +154,7 @@ class MainWindow:
         #self.canvas_view.reset_scrollregion()
         
     def dbManager_callback(self, clickdata = None):
-        print("Clickdata:",clickdata)
+        #print("Clickdata:",clickdata)
         item="tagClick"
         data = {'ref':clickdata, 'id':None}
         self.options_panel.display_attributes(item, data)
@@ -159,6 +162,7 @@ class MainWindow:
         self.master.focus_force()
 
 class NavigationTree:
+    #leftmost panel on the main window
     def __init__(self, master, paned_window, tree_callback, dbManager_callback, weight=1):
         self.master = master
         global data_model
@@ -204,7 +208,7 @@ class NavigationTree:
                 #TO DO: Remove the above line (self.tree_item_data[chapter_id] = value[i]) if not used
                 i += 1
 
-    def select_item(self, item_path):
+    def select_item(self, item_path, reset_scroll_region = True):
         path_elements = item_path.split("/")
         current_item = ""
 
@@ -215,42 +219,47 @@ class NavigationTree:
         
         # Select the final item
         self.tree.selection_set(current_item[:-1])
-        self.on_tree_item_click()
+        self.on_tree_item_click(reset_scroll_region)
         
-    def on_tree_item_click(self, event=None):
-        try:
+    def on_tree_item_click(self, reset_scroll_region=True, event=None):
+        #select and show chapters when clicked
+        #print(reset_scroll_region)
+        #print(event)
+        try: 
             item_id = self.tree.selection()[0]
             children = self.tree.get_children(item_id)
                 
-            self.tree.column("#0", stretch=False)
+            #self.tree.column("#0", stretch=False)
             self.tree.update_idletasks()
 
             #adjust width of tree to accommodate width of selected item
-            text_width = self.treeFont.measure(self.tree.item(item_id, 'text').strip())
-            tab_width = self.tree.bbox(item_id, column="#0")[0]  # Get the width of the last column
-            content_width = text_width+tab_width
+            #this is a carry over from a tree I used for another program...
+            #text_width = self.treeFont.measure(self.tree.item(item_id, 'text').strip())
+            #tab_width = self.tree.bbox(item_id, column="#0")[0]  # Get the width of the last column
+            #content_width = text_width+tab_width
             #print(self.tree.bbox(item_id, column="#0"))
             #print(str(text_width) + ", " + str(tab_width) + ", " + str(self.tree.winfo_width()))
             #print(self.tree.item(item_id, 'text'))
             #print(Font().actual())
 
-            if content_width > self.tree.winfo_width():
-                self.tree.column("#0", width=content_width)  # Adjust the column width
-            else:
-                self.tree.column("#0", width=self.tree.winfo_width())  # Set the width to the visible width
+            #if content_width > self.tree.winfo_width():
+            #    self.tree.column("#0", width=content_width)  # Adjust the column width
+            #else:
+            #    self.tree.column("#0", width=self.tree.winfo_width())  # Set the width to the visible width
 
             #get the data associated with that item and pass it to the canvas for display
             item_data = self.tree_item_data.get(item_id)
             #print("sending..." + str(attributes))
             # Use the callback in the NavigationTree class to handle the canvas update
-            reset_scrollbar = True
-            self.tree_callback(item_id, item_data, reset_scrollbar)
+            self.tree_callback(item_id, item_data, reset_scroll_region)
         except IndexError:
+            print("failed in on_tree_item_click")
             #clicking white space on the list throws this error. Just don't update the item.
             pass 
 
     
     def open_file_dialog(self):
+        #button to open a Bible file
         global data_model
         if not self.data_model_loaded:#First time clicked, load a bible db.
             file_path = filedialog.askopenfilename(defaultextension=".json", filetypes=[("JSON Bibles", "*.json"), ("All files", "*.*")])
@@ -367,8 +376,13 @@ class CanvasView:
         #print(vv)
         #print(cc)
         if event.state & (1<<0):
-            #print("shift key pressed")
             #shift key is pressed
+            #if a range is already selected, just go back to the first verse in it
+            self.selected_end_b = self.selected_start_b
+            self.selected_end_c = self.selected_start_c
+            self.selected_end_v = self.selected_start_v
+            eb = sb
+            
             #set selected chapters in order
             if bb > sb:
                 self.selected_end_b = bibledb_Lib.book_proper_names[bb]
@@ -446,6 +460,7 @@ class CanvasView:
         global textlinegap, fbdCircleDiam, textelbowroom
         
         item_hierarchy = item.split('/')
+        #print(item_hierarchy)
         if len(item_hierarchy) > 2:
             #print(item)
             #print(item_hierarchy)
@@ -523,12 +538,12 @@ class CanvasView:
                 ev = row['end_verse']
                 t = row['type']
                 #purple if there's both a note and a tag.
-                color = "purple"
+                color = "maroon"
                 lx = x_offset - id_lines
                 if t == "tag": #blue if just a tag
                     color = "blue"
                 elif t == "note": #orange if just a note
-                    color = "orange4"
+                    color = "orange2"
                 for verse in verse_heights:
                     v = verse['v']
                     if ((sb == b and sc == c and sv <= v) or\
@@ -662,8 +677,11 @@ class OptionsPanel:
             
         #get the verse reference and store in self.current_data['ref']
         if data != None and self.current_item == "verseClick":
-            if shift_key and "-" not in self.current_data['ref']:
+            #self.current_data is None the first time a verse is clicked. '-' will be in it if multiple verses are currently selected.
+            if (self.current_data is not None) and (shift_key and "-" not in self.current_data['ref']):
                 self.current_data['ref'] = combineVRefs(self.current_data['ref'], data['ref'])
+            elif (self.current_data is not None) and (shift_key and "-" in self.current_data['ref']):
+                self.current_data['ref'] = combineVRefs(self.current_data['ref'].split('-')[0], data['ref'])
             else:
                 self.current_data = data
         elif data != None:
