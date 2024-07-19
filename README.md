@@ -12,7 +12,7 @@ The columns are resizable (there's an invisible "sash" between each column that 
 If you click a tag, it'll show all the verses associated with that tag, and let you associate that tag with synonymous tags, just in case you make a mistake.
 (e.g. maybe you made a tag called "eros" and another tag called "romance" and you want them to actually be the same category).
 
-![image info](Screenshots/Screenshot1.png)
+![image info](Screenshots/Screenshot3.png)
 ![image info](Screenshots/Screenshot2.png)
 
 Known limitations:
