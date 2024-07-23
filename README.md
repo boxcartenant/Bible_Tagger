@@ -4,7 +4,7 @@ verses(), tags(), notes(), verse_tags(), verse_notes(), tag_notes(), tag_tags().
 
 It's written in Python with TKinter, with a 3-column interface:
 - The left column is a tree for navigating books and chapters.
-- The middle column shows the text for one chapter, with little lines to show what verses have been annotated or tagged. You can click a verse (or shift-click to select multiple verses).
+- The middle column shows the text for one chapter, with vertical lines to show what verses have been annotated or tagged. You can click a verse (or shift-click to select multiple verses).
 - The right column shows the selected verse(s), any notes you've written about that verse range, and a list of tags associated with the verse.
 
 The columns are resizable (there's an invisible "sash" between each column that you can drag left and right).
