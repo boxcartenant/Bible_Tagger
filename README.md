@@ -10,7 +10,7 @@ It's written in Python with TKinter, with a 3-column interface:
 The columns are resizable (there's an invisible "sash" between each column that you can drag left and right).
 
 If you click a tag, it'll show all the verses associated with that tag, and let you associate that tag with synonymous tags, just in case you make a mistake.
-(e.g. maybe you made a tag called "eros" and another tag called "romance" and you want them to actually be the same category).
+(e.g. maybe you made a tag called "skin disease" on a bunch of verses and another tag called "leprosy" on a bunch of other verses, and you decide you want them to actually be in the same category).
 
 ![image info](Screenshots/Screenshot4.png)
 ![image info](Screenshots/Screenshot2.png)
