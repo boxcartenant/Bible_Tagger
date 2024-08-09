@@ -85,7 +85,12 @@ def parseVerseReference(verse_ref):
             ev = refs[1].strip()
     #just one verse...(e.g. Gen 1:1)
     else:
-        book_name, verse_nums = parts
+        i = 0
+        book_name = ''
+        while i < len(parts)-1:
+            book_name += parts[i] + " "
+            i += 1
+        verse_nums = parts[i]
         book_name = book_name.strip()
         vparts = verse_nums.split(':')
         #start and end book chapter and verse are the same.
@@ -413,6 +418,10 @@ def delete_tag_tag(database_file, tag1, tag2):
         ''', (tag1_id, tag2_id))
 
         cursor.execute('''
+            DELETE FROM tag_tags WHERE tag1_id = ? AND tag2_id = ?
+        ''', (tag2_id, tag1_id))
+        
+        cursor.execute('''
             SELECT COUNT(*) FROM verse_tags WHERE tag_id = ?
         ''', (tag1_id,))
         remaining_associations1 = cursor.fetchone()[0]
@@ -615,28 +624,6 @@ def delete_tag_note(database_file, tag):
 #STEP 4: READ THE DB
 ######################
 
-def get_tag_list(database_file):
-    if database_file is None:
-        return []
-    conn = sqlite3.connect(database_file)
-    cursor = conn.cursor()
-
-    cursor.execute("select * from tags")
-
-    column_names = [description[0] for description in cursor.description]
-
-    rows = cursor.fetchall()
-
-    result = []
-    for row in rows:
-        row_dict = dict(zip(column_names, row))
-        result.append(row_dict)
-
-    # Close the connection
-    conn.close()
-    
-    return result
-
 def get_db_stuff(database_file, x_type, y_type, y_value):
     # gets all X's in relation to Y.
     # for example, if X is notes, and Y is verse: select all notes for that verse.
@@ -712,6 +699,29 @@ def get_db_stuff(database_file, x_type, y_type, y_value):
     conn.close()
     
     return result
+
+def get_tag_list(database_file):
+    if database_file is None:
+        return []
+    conn = sqlite3.connect(database_file)
+    cursor = conn.cursor()
+
+    cursor.execute("select * from tags")
+
+    column_names = [description[0] for description in cursor.description]
+
+    rows = cursor.fetchall()
+
+    result = []
+    for row in rows:
+        row_dict = dict(zip(column_names, row))
+        result.append(row_dict)
+
+    # Close the connection
+    conn.close()
+    
+    return result
+    
 
 def find_note_tag_verses(database_file, book, chapter):
 
