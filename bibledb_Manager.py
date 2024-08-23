@@ -32,8 +32,8 @@ def color_gradient(length, min_length, max_length, type_selection):
 class SecondaryWindow:
     def __init__(self, master, callback, dbdata = None):
         self.master = master
-        self.callback = callback
-        self.dbdata = dbdata
+        self.callback = callback #used for clicking a tag and setting it as the current tag in the main window
+        self.dbdata = dbdata #info about the currend db that's open
         
         #Handy variables here...
         self.canvasFont = Font(size = 10)
@@ -127,6 +127,7 @@ class SecondaryWindow:
         self.display_attributes()
 
     def display_attributes(self, dbstuff = None):
+        #shows all the tags
         x_offset = 5
         y_offset = 3
         textelbowroom = 10
@@ -149,28 +150,33 @@ class SecondaryWindow:
             self.canvas.create_text(10, 30, text="Select a verse to load a DB.", fill="green", font = self.canvasFont)
         else:
             #get all the tags
-            checklist = bibledb.get_tag_list(self.dbdata)
-            tags = [{"tag":b["tag"]} for b in checklist]
-
-            #group tags by synonyms
+            checklist = [b['tag'] for b in bibledb.get_tag_list(self.dbdata)]
             
             syngroups = []
             synonymlist = []
+            checkedlist = []   
+            
             for tag in checklist:
-                #add the current tag to a list of synonyms
-                synonymlist.append(tag["tag"])
-                #get all the synonyms for that tag
-                synonyms = bibledb.get_db_stuff(self.dbdata,"tag","tag",tag["tag"])
-                for synonym in synonyms:
-                    if synonym != tag:
-                        #add each synonym to the synonym list
-                        synonymlist.append(synonym["tag"])
-                        #remove it from the checklist
-                        checklist.remove(synonym)
-                #add the synonymlist to the list of synonym groups
-                syngroups.append({"tags":synonymlist})
-                synonymlist = []
-                #checklist.remove(tag)#this line causes the for loop to skip indices.
+                if tag not in checkedlist:
+                    checkedlist.append(tag)
+
+                    def recursivesynonyms(syno, thisgroup):
+                        synonyms = [b['tag'] for b in bibledb.get_db_stuff(self.dbdata,"tag","tag",syno)]
+                        for tag in synonyms:
+                            if tag not in thisgroup:
+                                thisgroup.append(tag)
+                                thisgroup = recursivesynonyms(tag, thisgroup)
+                        return thisgroup
+                    
+                    synonymlist = recursivesynonyms(tag, [tag])
+                    
+                    for s in synonymlist:
+                        if s != tag:
+                            checkedlist.append(s)
+                        
+                    syngroups.append({"tags":synonymlist})
+                    synonymlist = []
+                
 
             syngroups_lo = 9223372036854775807
             syngroups_hi = 0
@@ -191,6 +197,7 @@ class SecondaryWindow:
 
             tags_lo = 9223372036854775807
             tags_hi = 0
+            tags = [{"tag":b} for b in checklist]
             #count the verses for each tag
             for i in range(len(tags)):
                 tags[i]["verses"] = len(bibledb.get_db_stuff(self.dbdata, "verse", "tag", tags[i]["tag"]))
@@ -309,11 +316,3 @@ class SecondaryWindow:
                 y_offset += 10
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
 
-
-    #TO DO:
-    #Fix tag click callback
-    #update button text to reflect current color/sorting selections
-                
-        # Example button that calls the callback function in the main window
-        #self.button = tk.Button(self.secondary_window, text="Call Main Window Callback", command=self.callback)
-        #self.button.pack()
