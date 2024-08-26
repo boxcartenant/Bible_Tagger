@@ -109,29 +109,17 @@ def get_row_by_column(list_of_dicts, target_value, column_name):
             return row
     return None
 
-# Functions to parse verse references and stuff
+# Functions to parse verse references and return a formatted dictionary
 def tagVerseEntry(verse_ref, tag_name):
-    # You can implement your logic to parse verse references
-    # This is a simple example; you may need to expand it based on your specific needs
-    # possible usage: tagVerseEntry("gen 1:1", "creation")
     verses = parseVerseReference(verse_ref)
-
     return {"start_book": verses['sb'], "end_book": verses['eb'], "start_chapter": verses['sc'], "end_chapter": verses['ec'], "start_verse": verses['sv'], "end_verse": verses['ev'], "tag": tag_name}
 
 def verseNoteEntry(verse_ref, note):
-    # You can implement your logic to parse verse references
-    # This is a simple example; you may need to expand it based on your specific needs
-    # Assume verse_ref is in the format "book chapter:verse" (e.g., "Genesis 1:1")
     verses = parseVerseReference(verse_ref)
-
     return {"start_book": verses['sb'], "end_book": verses['eb'], "start_chapter": verses['sc'], "end_chapter": verses['ec'], "start_verse": verses['sv'], "end_verse": verses['ev'], "note": note}
 
 # I probably don't need this one....
 def tagNoteEntry(tag_name, note_data):
-    # You can implement your logic to parse verse references
-    # This is a simple example; you may need to expand it based on your specific needs
-    # Assume verse_ref is in the format "book chapter:verse" (e.g., "Genesis 1:1")
-
     return {"note": note_data, "tag": tag_name}
 
 
@@ -273,7 +261,7 @@ def makeDB(sqlite_database):
 
 
 ######################
-#STEP 3: ADD DB DATA
+#STEP 3: MODIFY DB DATA
 ######################
 def add_verse_tag(database_file, verse_ref, tag_name):
     tag_name = tag_name.lower()
@@ -625,8 +613,9 @@ def delete_tag_note(database_file, tag):
 ######################
 
 def get_db_stuff(database_file, x_type, y_type, y_value):
-    # gets all X's in relation to Y.
-    # for example, if X is notes, and Y is verse: select all notes for that verse.
+    # one-size-fits-all to get all X's in relation to Y.
+    # for example, if X is note, and Y is verse: select all notes for that verse.
+    # tolerable xy_type values are.... "note", "verse", "tag"
 
     if y_type == "tag":
         y_value = y_value.lower()
@@ -655,7 +644,7 @@ def get_db_stuff(database_file, x_type, y_type, y_value):
         type1 = y_type
         type2 = x_type
 
-    if y_type == "verse":
+    if y_type == "verse": #verse_tags or verse_notes
         y_value = parseVerseReference(y_value)
         query_string = f'''
             SELECT {x_type}s.*
@@ -665,7 +654,7 @@ def get_db_stuff(database_file, x_type, y_type, y_value):
             WHERE {y_type}s.start_book = ? AND {y_type}s.end_book = ? AND {y_type}s.start_chapter = ? AND {y_type}s.end_chapter = ? AND {y_type}s.start_verse = ? AND {y_type}s.end_verse = ?
         '''
         cursor.execute(query_string, (y_value["sb"],y_value["eb"],y_value["sc"],y_value["ec"],y_value["sv"],y_value["ev"]))
-    elif x_type == y_type == "tag":        
+    elif x_type == y_type == "tag":   #tag_tags     
         query_string = '''SELECT t2.*
             FROM tags as t1
             JOIN tag_tags AS tt ON ((t1.id = tt.tag1_id) AND (t1.tag = ?) AND (t2.id = tt.tag2_id))
@@ -674,7 +663,7 @@ def get_db_stuff(database_file, x_type, y_type, y_value):
             WHERE t2.tag  != ?
             '''
         cursor.execute(query_string, (y_value,y_value,y_value))
-    else:
+    else: #tag_notes
     #build the query string using x and y types.
         query_string = f'''
             SELECT {x_type}s.*
@@ -701,6 +690,7 @@ def get_db_stuff(database_file, x_type, y_type, y_value):
     return result
 
 def get_tag_list(database_file):
+    # returns a dictionary of all the tags in the database
     if database_file is None:
         return []
     conn = sqlite3.connect(database_file)
@@ -724,7 +714,8 @@ def get_tag_list(database_file):
     
 
 def find_note_tag_verses(database_file, book, chapter):
-
+    # for a given book and chapter, get all verse ranges that have tags and/or notes.
+    # this function is used to make the little indicator lines to the left of the verses in the UI.
     if database_file is None:
         return []
 
