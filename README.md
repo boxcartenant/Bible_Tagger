@@ -10,7 +10,9 @@ The columns are resizable (there's an invisible "sash" between each column that 
 ![image info](Screenshots/Screenshot4.png)
 ![image info](Screenshots/Screenshot2.png)
 
-I programmed this around the output of SWORD-to-JSON. A copy of that is included in here. The output is a SQLite database with the following tables:
+I programmed this around the output of SWORD-to-JSON. Here's the link to that: https://github.com/wasdin/SWORD-to-JSON . A copy of it (which I had to modify to make it work for me) is included in here. 
+
+Bible_Tagger outputs a SQLite database with the following tables:
 
 verses(), tags(), notes(), verse_tags(), verse_notes(), tag_notes(), tag_tags().
 
