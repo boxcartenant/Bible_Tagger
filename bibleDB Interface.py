@@ -52,8 +52,14 @@ def combineVRefs(vref1, vref2):
     bB = bB.strip()
     cB = vref2.split(":")[0].split(" ")[i]
     #start and end verses
-    vA = vref1.split(":")[1]
-    vB = vref2.split(":")[1]
+    try:
+        vA = vref1.split(":")[1]
+        vB = vref2.split(":")[1]
+    except Exception as e:
+        print("Error in combineVRefs(): ",e)
+        print("vref1 =", vref1)
+        print("vref2 =", vref2)
+        return vref1
     if bA != bB: #different book
         if bibledb_Lib.book_proper_names.index(bA) < bibledb_Lib.book_proper_names.index(bB):
             return(bA+" "+cA + ":" + vA + " - " + bB + " " +cB + ":" + vB)
@@ -472,7 +478,7 @@ class CanvasView:
             #we're going to draw vertical lines left of the verses to indicate which verses have notes and tags.
             #get the tagged and noted verse rows
             notestags = bibledb_Lib.find_note_tag_verses(open_db_file, thisbook, thischapter)
-            #move the verses over to make room for the lines. One pixel for each unique verse ID.
+            #move the verses over to make room for the lines. Two pixels for each unique verse ID.
             id_lines = len(notestags)*2
             if id_lines > 0:
                 x_offset += id_lines
@@ -544,6 +550,12 @@ class CanvasView:
                     color = "blue"
                 elif t == "note": #orange if just a note
                     color = "orange2"
+
+                #capture the top and bottom verse in a group which spans multiple chapters
+                lowest_v = 999999
+                highest_v = -5
+                low_vh = None
+                high_vh = None
                 for verse in verse_heights:
                     v = verse['v']
                     if ((sb == b and sc == c and sv <= v) or\
@@ -552,7 +564,17 @@ class CanvasView:
                        ((eb == b and ec == c and ev >= v) or\
                         (eb == b and ec > c) or\
                         (eb > b)):
+                        if v < lowest_v:
+                            lowest_v = v
+                            low_vh = verse
+                        if v > highest_v:
+                            highest_v = v
+                            high_vh = verse
                         self.canvas.create_line(lx, verse['top'], lx, verse['bot'], fill=color, width=1)
+                if ec > c or eb > b or sc < c or sb < b:
+                    #if this group spans multiple chapters, give it a little hat and a little shoe to indicate it.
+                    self.canvas.create_line(lx, high_vh['bot'], lx+2, high_vh['bot'], fill=color, width=5)
+                    self.canvas.create_line(lx, low_vh['top'], lx+2, low_vh['top'], fill=color, width=5)
                 id_lines -= 2
                         
         #print(item_hierarchy)
@@ -918,7 +940,7 @@ class OptionsPanel:
     def create_tag(self, event, verse, reftype):
         tag = simpledialog.askstring("Add Tag", "Enter Tag:", initialvalue="")
         #print("Do the tag creation logic here")
-        if tag is not None:
+        if (tag is not None) and (tag != ""):
             if reftype == "verse":
                 bibledb_Lib.add_verse_tag(open_db_file, verse, tag)
             elif reftype == "tag":
@@ -927,7 +949,8 @@ class OptionsPanel:
             self.display_attributes()
             self.cause_canvas_to_refresh()
         else:
-            print("Tag creation cancelled")
+            pass
+            #print("Tag creation cancelled")
     
     def edit_note_text(self, event, reference, reftype):
         #print(type(self.note_area_text),self.note_area_text)
