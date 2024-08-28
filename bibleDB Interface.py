@@ -839,6 +839,20 @@ class OptionsPanel:
                 #actual tag display
                 tag_display_binder = "Display_" + str(tag['id'])
                 self.canvas.create_rectangle(x_offset+tagx, y_offset, x_offset+tagx+tag_width, y_offset+textlineheight+textlinegap*2, fill='azure', tags=tag_display_binder)
+
+                #if there's a note on this tag, put a little triangle on the corner of the tag's button
+                if (len(bibledb_Lib.get_db_stuff(open_db_file, "note", "tag", tagname)) > 0):
+                    self.canvas.create_polygon( #triangle for tags with comments
+                        x_offset + tagx + tag_width,  # x1: Upper-right corner x
+                        y_offset,                     # y1: Upper-right corner y
+                        x_offset + tagx + tag_width - 10,  # x2: 10 pixels left of upper-right corner x
+                        y_offset,                     # y2: Same y as upper-right corner
+                        x_offset + tagx + tag_width,  # x3: Upper-right corner x
+                        y_offset + 10,                 # y3: 10 pixels down from upper-right corner y
+                        fill='black',
+                        outline='black',  # Optional: remove or change if you don't want an outline
+                        tags=tag_display_binder
+                    )
                 self.canvas.create_text(x_offset+tagx, y_offset+textlinegap, text=" " + tag['tag'], anchor=tk.NW, font=self.canvasFont, tags=tag_display_binder)
                 #button event to show tag details in this panel...
                 self.canvas.tag_bind(tag_display_binder, '<Button-1>', lambda event, item="tagClick", data = {'ref':tagname, 'id':tag['id']} : self.display_attributes(item, data))
@@ -902,7 +916,7 @@ class OptionsPanel:
             y_offset += textlineheight + textlinegap*5 #*5 because it's a title. Have some gap! Golly!
 
         if self.current_data is not None:
-        ##### DB LOAD SAVE BUTTONS
+        ##### DB LOAD SAVE BUTTONS ##---- DONE
             buttonText = "Load DB"
             button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
             self.canvas.create_rectangle(x_offset, y_offset, x_offset+button_width,y_offset + textlineheight + 2*textelbowroom, fill='snow', tags='load_db_button')
