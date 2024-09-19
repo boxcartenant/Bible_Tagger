@@ -12,17 +12,15 @@ import sqlite3
 BIBLE_FILE_PATH = "asv.json"
 SQLITE_DATABASE = "bible_database.sqlite"
 
-
+#ordered list of names, to be used like: book_proper_names[0] #returns "Genesis"
 book_proper_names = []
 
 ######################
 # INTERNALLY USED FUNCTIONS
 ######################
 
-# Function to qualify book names
+# Function to get fully qualified book names from partial names
 def qualifyBook(book_name):
-    # You can implement your logic to convert shorthand book names to full names
-    # This is a simple example; you may need to expand it based on your specific needs
     global book_proper_names
 
     if book_name == '':
@@ -712,6 +710,36 @@ def get_tag_list(database_file):
     
     return result
     
+def find_note_tag_chapters(database_file):
+    #return a list of book/chapter, formatted like the Treeview tags, for every chapter that has notes and tags.
+    if database_file is None:
+        return []
+    
+    conn = sqlite3.connect(database_file)
+    cursor = conn.cursor()
+
+    #get all verse ranges which have tags
+    cursor.execute('''
+        SELECT DISTINCT 
+            v.start_book AS book,
+            v.start_chapter AS chapter
+        FROM verses v
+        LEFT JOIN verse_tags vt ON v.id = vt.verse_id
+        LEFT JOIN verse_notes vn ON v.id = vn.verse_id
+        WHERE vt.tag_id IS NOT NULL 
+           OR vn.note_id IS NOT NULL
+        ORDER BY book, chapter;
+        ''',)
+
+    column_names = [description[0] for description in cursor.description]
+    rows = cursor.fetchall()
+    #zip them into a dictionary for easy use
+    tagged_chapters = []
+    for row in rows:
+        bc = "/"+book_proper_names[int(row[0])] + '/Ch ' + str(row[1])
+        tagged_chapters.append(bc)
+
+    return tagged_chapters
 
 def find_note_tag_verses(database_file, book, chapter):
     # for a given book and chapter, get all verse ranges that have tags and/or notes.
