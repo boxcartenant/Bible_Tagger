@@ -315,3 +315,4 @@ class SecondaryWindow:
                     y_offset += textlineheight + textlinegap
                 y_offset += 10
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+
