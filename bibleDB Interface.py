@@ -91,7 +91,7 @@ class MainWindow:
 
         self.navigation_tree = NavigationTree(self.master, self.paned_window, self.tree_callback, self.dbManager_callback)
         self.canvas_view = CanvasView(self.master, self.paned_window, self.canvas_callback)
-        self.options_panel = OptionsPanel(self.master, self.paned_window, self.options_callback, self.cause_canvas_to_refresh)
+        self.options_panel = OptionsPanel(self.master, self.paned_window, self.options_callback, self.cause_canvas_to_refresh, self.update_tree_colors)
 
         self.paned_window.bind("<B1-Motion>", self.on_sash_drag)
         self.paned_window.bind("<Configure>", lambda event : self.options_panel.display_attributes(None))
@@ -112,6 +112,15 @@ class MainWindow:
 
         #To Do: account for situations where the user puts the sashes together.
 
+    def update_tree_colors(self):
+        #do a sql query to find out what chapters have notes or tags
+        marked_chapters = bibledb_Lib.find_note_tag_chapters(open_db_file)
+        #recolor all the chapters that have content
+        self.navigation_tree.recolor(marked_chapters)
+        pass
+        
+        
+        
     def tree_callback(self, item, data, reset_scrollbar):
         # handle canvas-related actions caused by tree interactions here
         # You can call the CanvasView methods to update the canvas
@@ -178,6 +187,7 @@ class NavigationTree:
         self.treeFont = Font()
         self.tree_callback = tree_callback
         self.dbManager_callback = dbManager_callback
+        self.marked_chapters = []
 
         self.secondary_window = None
         
@@ -209,10 +219,23 @@ class NavigationTree:
             self.tree_item_data[item_id] = value  # Store the associated data
             i = 0
             while i < len(value):
-                chapter_id = self.tree.insert(item_id, 'end', text="Ch "+str(i+1), iid=item_id+"/Ch "+str(i+1))
+                tagID = item_id+"/Ch "+str(i+1)
+                chapter_id = self.tree.insert(item_id, 'end', text="Ch "+str(i+1), iid=tagID, tags=(tagID,))
+                #print(tagID)
                 self.tree_item_data[chapter_id] = value[i]  # Store the associated data
                 #TO DO: Remove the above line (self.tree_item_data[chapter_id] = value[i]) if not used
                 i += 1
+
+    def recolor(self, marked_chapters):
+        #self.tree.tag_configure("allchapters",foreground='black')
+        blue_chapters = list(set(marked_chapters) - set(self.marked_chapters))
+        black_chapters = list(set(self.marked_chapters) - set(marked_chapters))
+        for chapter in blue_chapters:
+            self.tree.tag_configure(chapter,foreground='blue')
+        for chapter in black_chapters:
+            self.tree.tag_configure(chapter,foreground='black')
+        self.marked_chapters = marked_chapters
+        root.update()
 
     def select_item(self, item_path, reset_scroll_region = True):
         path_elements = item_path.split("/")
@@ -598,23 +621,66 @@ class CanvasView:
 class MultiLineInputDialog(simpledialog.Dialog):
 
     initial_value = ""
+
     def body(self, master):
         self.result = None
 
-        tk.Label(master, text="Enter text:").grid(row=0, column=0, padx=10, pady=10)
+        # Set the initial size of the dialog window (width x height)
+        self.geometry("400x300")  # Initial size
 
-        self.text_input = tk.Text(master, height=5, width=30)
-        self.text_input.grid(row=1, column=0, padx=10, pady=10)
+        tk.Label(master, text="Enter text:").grid(row=0, column=0, padx=10, pady=10, sticky="w")
+
+        # Create a frame to hold the Text widget and scrollbar
+        self.text_frame = tk.Frame(master)
+        self.text_frame.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
+
+        # Make sure the grid resizes with the window
+        master.grid_rowconfigure(1, weight=1)
+        master.grid_columnconfigure(0, weight=1)
+        self.text_frame.grid_rowconfigure(0, weight=1)
+        self.text_frame.grid_columnconfigure(0, weight=1)
+
+        # Define a fixed-width font (Courier) for consistent line height and width
+        self.text_font = Font(size=10)
+
+        # Create the text input and scrollbar
+        self.text_input = tk.Text(self.text_frame, height=5, width=30, wrap=tk.WORD, font=self.text_font)
+        self.text_input.grid(row=0, column=0, sticky="nsew")
+
+        scrollbar = tk.Scrollbar(self.text_frame, command=self.text_input.yview)
+        scrollbar.grid(row=0, column=1, sticky="ns")
+        self.text_input.config(yscrollcommand=scrollbar.set)
+
         self.text_input.insert(tk.END, self.initial_value)
 
         # Bind the Return/Enter key to the custom function
-        self.master.bind("<Return>", self.on_enter_key)
+        self.text_input.bind("<Return>", self.on_enter_key)
+
+        # Allow resizing of the window
+        self.resizable(True, True)
+
+        # Bind the <Configure> event to dynamically adjust the text widget size
+        self.bind("<Configure>", self.on_resize)
 
         return self.text_input  # Focus on the text input initially
 
+    def on_resize(self, event):
+        if event.widget == self:
+            # Adjust the width and height based on font metrics
+            char_width = self.text_font.measure("0")  # Width of a character "0"
+            line_height = self.text_font.metrics("linespace")  # Height of a line
+            new_width = int(self.winfo_width() / char_width)  # Adjust width by character width
+
+            #The -120 here is intended to make room for the buttons at the bottom.
+            new_height = int((self.winfo_height()-120) / line_height) # Adjust height by line height
+            
+            self.text_input.config(width=new_width, height=new_height)
+
     def on_enter_key(self, event):
         # Insert a newline character when the Enter key is pressed
-        self.text_input.insert(tk.END, "\n")
+        self.text_input.insert(tk.INSERT, "\n")
+        return "break"  # Prevent the default behavior of closing the dialog
+
     def buttonbox(self):
         box = tk.Frame(self)
 
@@ -629,9 +695,10 @@ class MultiLineInputDialog(simpledialog.Dialog):
         self.result = self.text_input.get("1.0", tk.END).strip()
 
 class OptionsPanel:
-    def __init__(self, master, paned_window, options_callback, cause_canvas_to_refresh):
+    def __init__(self, master, paned_window, options_callback, cause_canvas_to_refresh, update_tree_colors):
         self.options_callback = options_callback
         self.cause_canvas_to_refresh = cause_canvas_to_refresh
+        self.update_tree_colors = update_tree_colors
         self.master = master
         global data_model, open_db_file
         self.paned_window = paned_window
@@ -768,7 +835,8 @@ class OptionsPanel:
                 self.note_area_text = note_query_result[0]['note']
             else:
                 self.note_area_text = None
-            
+
+            #show the note area text
             if self.note_area_text is not None:
                 text_to_render = []
                 for paragraph in self.note_area_text.split('\n'):
@@ -948,6 +1016,7 @@ class OptionsPanel:
                 bibledb_Lib.delete_tag_tag(open_db_file, verse, tag)
             self.display_attributes()
             self.cause_canvas_to_refresh()
+            self.update_tree_colors()
         else:
             print("Tag deletion canceled")
 
@@ -962,6 +1031,7 @@ class OptionsPanel:
                 bibledb_Lib.add_tag_tag(open_db_file, verse, tag)
             self.display_attributes()
             self.cause_canvas_to_refresh()
+            self.update_tree_colors()
         else:
             pass
             #print("Tag creation cancelled")
@@ -983,6 +1053,7 @@ class OptionsPanel:
                 bibledb_Lib.add_tag_note(open_db_file, reference, new_text)
             self.display_attributes()
             self.cause_canvas_to_refresh()
+            self.update_tree_colors()
         elif new_text == "":
             answer = messagebox.askyesno("Really delete?", "Do you want to delete this note?")
             if answer:
@@ -992,6 +1063,7 @@ class OptionsPanel:
                     bibledb_Lib.delete_tag_note(open_db_file, reference)
                 self.display_attributes()
                 self.cause_canvas_to_refresh()
+                self.update_tree_colors()
     
     ##### DB LOAD SAVE
     def load_db(self, event):
@@ -1006,6 +1078,7 @@ class OptionsPanel:
                 print(f"Loaded DB: {file_path}")
                 self.display_attributes()
                 self.cause_canvas_to_refresh()
+                self.update_tree_colors()
             else:
                 print("I'm not opening that. It's gotta be a SQLITE database file with the extension \".bdb\"")
 
