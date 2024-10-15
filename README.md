@@ -19,9 +19,8 @@ verses(), tags(), notes(), verse_tags(), verse_notes(), tag_notes(), tag_tags().
 Known limitations:
 - If you create a DB while you have a weird Bible open (e.g. one with the Apocrypha included), and then open the same DB later with a normal bible, the books will all be indexed wrong, which can result in out-of-range errors. This problem won't manifest the same way with verses that include ranges where verse numbers are omitted (e.g. kjv vs niv), but may affect instances where a tag links to a single verse that is omitted, or the last verse in a chapter where a single verse has been omitted (idk).
 
-To-Do List:
+To-Do List (not in any order):
 - Add a tool to merge databases
 - Make verse references in the DB more explicit so that the tool will accommodate switching between translations with missing verses
 - Make it so that you don't have to select a verse before you load your DB
 - Add a list/filter tool so you can get all the verses which share multiple tags
-- Add autocomplete to the tag name entry
