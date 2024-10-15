@@ -184,6 +184,11 @@ class MainWindow:
         # Only scroll the active panel
         #print("scrolling active_panel",self.active_panel)
         if self.active_panel:
+            first, last = self.active_panel.yview()  # Get scrollbar position
+            if event.delta > 0 and first <= 0:  # Trying to scroll up but already at the top
+                return  # Do nothing
+            if event.delta < 0 and last >= 1:  # Trying to scroll down but already at the bottom
+                return
             self.active_panel.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
     def on_sash_drag(self,event):
