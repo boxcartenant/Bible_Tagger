@@ -77,7 +77,64 @@ def combineVRefs(vref1, vref2):
             return(bA+" "+cB + ":" + vB + "-" + vA)
     else: #same book, same chapter, same verse
         return vref1
-    
+
+class TagInputDialog(simpledialog.Dialog):
+    #inherits simpledialog to make a tag input dialog with a dropdown suggestion list
+    def __init__(self, parent, get_tags_like=bibledb_Lib.get_tags_like):
+        self.get_tags_like = get_tags_like
+        self.selected_tag = None
+        super().__init__(parent, title="Add Tag")
+
+    def body(self, master):
+        # Entry for typing tag
+        self.entry = tk.Entry(master)
+        self.entry.grid(row=0, column=0, padx=10, pady=10)
+
+        # Listbox to display tag suggestions
+        self.listbox = tk.Listbox(master, height=5)
+        self.listbox.grid(row=1, column=0, padx=10, pady=10)
+        self.listbox.grid_remove()  # Initially hide the listbox
+
+        # Bind entry events for filtering suggestions
+        self.entry.bind("<KeyRelease>", self.update_suggestions)
+        self.listbox.bind("<Double-1>", self.on_select)
+
+        return self.entry  # Focus on entry widget
+
+    def update_suggestions(self, event):
+        # Get the current input from the entry widget
+        partial_tag = self.entry.get()
+
+        # Clear the listbox
+        self.listbox.delete(0, tk.END)
+        if partial_tag.strip():
+            # Get suggestions from the database
+            matching_tags = self.get_tags_like(open_db_file, partial_tag)
+            if matching_tags:
+                # Insert suggestions into the listbox
+                for tag in matching_tags:
+                    self.listbox.insert(tk.END, tag)
+
+                # Show the listbox if there are matching tags
+                self.listbox.grid()
+            else:
+                # Hide the listbox if no matches are found
+                self.listbox.grid_remove()
+        else:
+            # Hide the listbox if the input is empty
+            self.listbox.grid_remove()
+
+    def on_select(self, event):
+        # Get the selected tag from the listbox
+        selected = self.listbox.curselection()
+        if selected:
+            self.selected_tag = self.listbox.get(selected[0])[0]
+            self.ok()  # Close the dialog
+
+    def apply(self):
+        # Get the final tag value (from entry or listbox)
+        if not self.selected_tag:
+            self.selected_tag = self.entry.get()   
 
 class MainWindow:
     def __init__(self, master):
@@ -1021,7 +1078,9 @@ class OptionsPanel:
             print("Tag deletion canceled")
 
     def create_tag(self, event, verse, reftype):
-        tag = simpledialog.askstring("Add Tag", "Enter Tag:", initialvalue="")
+        #tag = simpledialog.askstring("Add Tag", "Enter Tag:", initialvalue="") #OLD WAY -- no tag suggestions
+        tag = TagInputDialog(self.master).selected_tag
+        #print("the selected tag is:",tag,type(tag))
         #print("Do the tag creation logic here")
         if (tag is not None) and (tag != ""):
             if reftype == "verse":
@@ -1032,6 +1091,9 @@ class OptionsPanel:
             self.display_attributes()
             self.cause_canvas_to_refresh()
             self.update_tree_colors()
+            #move the canvas to the bottom.
+            #it's a little jumpy, but entirely critical when addint lots of tags to a page with very long notes.
+            self.canvas.yview_moveto(1.0)
         else:
             pass
             #print("Tag creation cancelled")
