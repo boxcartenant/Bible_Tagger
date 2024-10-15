@@ -97,7 +97,9 @@ class TagInputDialog(simpledialog.Dialog):
 
         # Bind entry events for filtering suggestions
         self.entry.bind("<KeyRelease>", self.update_suggestions)
+        self.entry.bind("<Down>", self.focus_listbox)  # Bind down arrow key
         self.listbox.bind("<Double-1>", self.on_select)
+        self.listbox.bind("<Return>", self.on_select)  # Bind enter key in listbox
 
         return self.entry  # Focus on entry widget
 
@@ -123,6 +125,13 @@ class TagInputDialog(simpledialog.Dialog):
         else:
             # Hide the listbox if the input is empty
             self.listbox.grid_remove()
+
+    def focus_listbox(self, event):
+        # If there are items in the listbox, select the first one and focus the listbox
+        if self.listbox.size() > 0:
+            self.listbox.selection_set(0)  # Select the first item
+            self.listbox.activate(0)       # Make the first item active
+            self.listbox.focus_set()       # Move focus to the listbox
 
     def on_select(self, event):
         # Get the selected tag from the listbox
@@ -152,7 +161,31 @@ class MainWindow:
 
         self.paned_window.bind("<B1-Motion>", self.on_sash_drag)
         self.paned_window.bind("<Configure>", lambda event : self.options_panel.display_attributes(None))
-        
+
+        #fixing the scrollbar behavior
+        self.active_panel = None
+        self.master.bind("<MouseWheel>", self.scroll_active_panel)
+        self.canvas_view.canvas.bind("<Enter>", self.set_active_panel)
+        self.canvas_view.canvas.bind("<Leave>", self.clear_active_panel)
+        self.options_panel.canvas.bind("<Enter>", self.set_active_panel)
+        self.options_panel.canvas.bind("<Leave>", self.clear_active_panel)
+        #self.options_panel.canvas_frame.bind("<MouseWheel>", self.scroll_active_panel)
+
+    def set_active_panel(self, event):
+        # Set the active panel to the widget under the mouse
+        self.active_panel = event.widget
+        #print("active_panel",self.active_panel)
+
+    def clear_active_panel(self, event):
+        # Clear the active panel when the mouse leaves
+        self.active_panel = None
+
+    def scroll_active_panel(self, event):
+        # Only scroll the active panel
+        #print("scrolling active_panel",self.active_panel)
+        if self.active_panel:
+            self.active_panel.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
     def on_sash_drag(self,event):
         # If the moved sash is near the treeview sash (left), update the tree view
         if self.paned_window.sashpos(0) - 10 < event.x < self.paned_window.sashpos(0) + 10:
@@ -400,16 +433,16 @@ class CanvasView:
         self.canvas_frame.bind("<Configure>", lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
 
         # Create vertical and horizontal scrollbars
-        v_scrollbar = tk.Scrollbar(self.canvas_frame, orient="vertical", command=self.canvas.yview)
-        h_scrollbar = tk.Scrollbar(self.canvas_frame, orient="horizontal", command=self.canvas.xview)
+        self.v_scrollbar = tk.Scrollbar(self.canvas_frame, orient="vertical", command=self.canvas.yview)
+        self.h_scrollbar = tk.Scrollbar(self.canvas_frame, orient="horizontal", command=self.canvas.xview)
 
         # Configure canvas to use scrollbars
-        self.canvas.configure(yscrollcommand=v_scrollbar.set, xscrollcommand=h_scrollbar.set)
+        self.canvas.configure(yscrollcommand=self.v_scrollbar.set, xscrollcommand=self.h_scrollbar.set)
 
         # Add scrollbars to the canvas frame
-        v_scrollbar.grid(row=0, column=1, sticky="ns")
-        h_scrollbar.grid(row=1, column=0, sticky="ew")
-        self.scrollbar_width = v_scrollbar.winfo_reqwidth()
+        self.v_scrollbar.grid(row=0, column=1, sticky="ns")
+        self.h_scrollbar.grid(row=1, column=0, sticky="ew")
+        self.scrollbar_width = self.v_scrollbar.winfo_reqwidth()
 
         self.selected_start_v = -1
         self.selected_end_v = -1
@@ -781,15 +814,15 @@ class OptionsPanel:
         self.canvas_frame.bind("<Configure>", lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
 
         # Create vertical and horizontal scrollbars
-        v_scrollbar = tk.Scrollbar(self.canvas_frame, orient="vertical", command=self.canvas.yview)
-        h_scrollbar = tk.Scrollbar(self.canvas_frame, orient="horizontal", command=self.canvas.xview)
+        self.v_scrollbar = tk.Scrollbar(self.canvas_frame, orient="vertical", command=self.canvas.yview)
+        self.h_scrollbar = tk.Scrollbar(self.canvas_frame, orient="horizontal", command=self.canvas.xview)
 
         # Configure canvas to use scrollbars
-        self.canvas.configure(yscrollcommand=v_scrollbar.set, xscrollcommand=h_scrollbar.set)
+        self.canvas.configure(yscrollcommand=self.v_scrollbar.set, xscrollcommand=self.h_scrollbar.set)
 
         # Add scrollbars to the canvas frame
-        v_scrollbar.grid(row=0, column=1, sticky="ns")
-        h_scrollbar.grid(row=1, column=0, sticky="ew")
+        self.v_scrollbar.grid(row=0, column=1, sticky="ns")
+        self.h_scrollbar.grid(row=1, column=0, sticky="ew")
 
         self.paned_window.add(self.canvas_frame)
         self.note_area_text = "Click to add notes."
