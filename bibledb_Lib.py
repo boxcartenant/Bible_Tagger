@@ -825,3 +825,29 @@ def find_note_tag_verses(database_file, book, chapter):
     
 
     return combined_verses
+
+def get_tags_like(database_file, partial_tag):
+    # returns a dictionary of all the tags in the database
+    if database_file is None:
+        return []
+    conn = sqlite3.connect(database_file)
+    cursor = conn.cursor()
+
+    partial_tag = partial_tag.lower()
+    
+    cursor.execute("select tag from tags where tag like ?;",("%" + partial_tag + "%",))
+
+    #column_names = [description[0] for description in cursor.description]
+
+    rows = cursor.fetchall()
+
+    #result = []
+    #for row in rows:
+    #    row_dict = dict(zip(column_names, row))
+    #    result.append(row_dict)
+
+    # Close the connection
+    conn.close()
+
+    #in this case, I only care about getting a list of tag names
+    return rows
