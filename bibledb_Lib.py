@@ -709,7 +709,23 @@ def get_tag_list(database_file):
     conn.close()
     
     return result
-    
+
+def tag_exists(database_file, tag):
+    # Return True if tag exists, otherwise False
+    if database_file is None:
+        return False
+
+    conn = sqlite3.connect(database_file)
+    cursor = conn.cursor()
+
+    query = f"SELECT EXISTS(SELECT 1 FROM tags WHERE tag = ? LIMIT 1)"
+    cursor.execute(query, (tag,))
+    tag_exists = cursor.fetchone()[0]  # fetchone returns a tuple, get the first element
+
+    conn.close()
+
+    return bool(tag_exists)
+
 def find_note_tag_chapters(database_file):
     #return a list of book/chapter, formatted like the Treeview tags, for every chapter that has notes and tags.
     if database_file is None:
@@ -827,27 +843,20 @@ def find_note_tag_verses(database_file, book, chapter):
     return combined_verses
 
 def get_tags_like(database_file, partial_tag):
-    # returns a dictionary of all the tags in the database
+    # returns a dictionary of all the tags in the database that are like the partial_tag
     if database_file is None:
         return []
     conn = sqlite3.connect(database_file)
     cursor = conn.cursor()
 
-    partial_tag = partial_tag.lower()
+    partial_tag = partial_tag.lower() #all my tags are lowercase
     
     cursor.execute("select tag from tags where tag like ?;",("%" + partial_tag + "%",))
 
-    #column_names = [description[0] for description in cursor.description]
-
     rows = cursor.fetchall()
-
-    #result = []
-    #for row in rows:
-    #    row_dict = dict(zip(column_names, row))
-    #    result.append(row_dict)
 
     # Close the connection
     conn.close()
 
-    #in this case, I only care about getting a list of tag names
+    #return a list of tag names
     return rows
