@@ -7,6 +7,7 @@ from tkinter import Misc
 from tkinter import simpledialog
 from tkinter import messagebox
 from bibledb_Manager import SecondaryWindow
+from bibledb_Manager import TagInputDialog, combineVRefs
 
 textlinegap = 2
 windowsize = "1000x600"
@@ -30,120 +31,6 @@ def wrapText(text, width, font):
     if line != '':
         lines.append(line)
     return lines
-
-def combineVRefs(vref1, vref2):
-    #get the verse reference and store in self.current_data['ref']
-    #start book and chapter
-    bookparts = vref1.split(":")[0].split(" ")
-    bA = ""
-    i = 0
-    while i < len(bookparts)-1:
-       bA += bookparts[i] + " "
-       i+= 1
-    bA = bA.strip()
-    cA = vref1.split(":")[0].split(" ")[i]
-    bookparts = vref2.split(":")[0].split(" ")
-    #end book and chapter
-    bB = ""
-    i = 0
-    while i < len(bookparts)-1:
-       bB += bookparts[i] + " "
-       i+= 1
-    bB = bB.strip()
-    cB = vref2.split(":")[0].split(" ")[i]
-    #start and end verses
-    try:
-        vA = vref1.split(":")[1]
-        vB = vref2.split(":")[1]
-    except Exception as e:
-        print("Error in combineVRefs(): ",e)
-        print("vref1 =", vref1)
-        print("vref2 =", vref2)
-        return vref1
-    if bA != bB: #different book
-        if bibledb_Lib.book_proper_names.index(bA) < bibledb_Lib.book_proper_names.index(bB):
-            return(bA+" "+cA + ":" + vA + " - " + bB + " " +cB + ":" + vB)
-        else:
-            return(bB+" "+cB + ":" + vB + " - " + bA + " " +cA + ":" + vA)
-    elif cA != cB: #same book, different chapter
-        if int(cA) < int(cB):
-            return(bA+" "+cA + ":" + vA + "-" + cB + ":" + vB)
-        else:
-            return(bA+" "+cB + ":" + vB + "-" + cA + ":" + vA)
-    elif vA != vB: #same book, same chapter, different verse
-        if int(vA) < int(vB):
-            return(bA+" "+cA + ":" + vA + "-" + vB)
-        else:
-            return(bA+" "+cB + ":" + vB + "-" + vA)
-    else: #same book, same chapter, same verse
-        return vref1
-
-class TagInputDialog(simpledialog.Dialog):
-    #inherits simpledialog to make a tag input dialog with a dropdown suggestion list
-    def __init__(self, parent, get_tags_like=bibledb_Lib.get_tags_like):
-        self.get_tags_like = get_tags_like
-        self.selected_tag = None
-        super().__init__(parent, title="Add Tag")
-
-    def body(self, master):
-        # Entry for typing tag
-        self.entry = tk.Entry(master)
-        self.entry.grid(row=0, column=0, padx=10, pady=10)
-
-        # Listbox to display tag suggestions
-        self.listbox = tk.Listbox(master, height=5)
-        self.listbox.grid(row=1, column=0, padx=10, pady=10)
-        self.listbox.grid_remove()  # Initially hide the listbox
-
-        # Bind entry events for filtering suggestions
-        self.entry.bind("<KeyRelease>", self.update_suggestions)
-        self.entry.bind("<Down>", self.focus_listbox)  # Bind down arrow key
-        self.listbox.bind("<Double-1>", self.on_select)
-        self.listbox.bind("<Return>", self.on_select)  # Bind enter key in listbox
-
-        return self.entry  # Focus on entry widget
-
-    def update_suggestions(self, event):
-        # Get the current input from the entry widget
-        partial_tag = self.entry.get()
-
-        # Clear the listbox
-        self.listbox.delete(0, tk.END)
-        if partial_tag.strip():
-            # Get suggestions from the database
-            matching_tags = self.get_tags_like(open_db_file, partial_tag)
-            if matching_tags:
-                # Insert suggestions into the listbox
-                for tag in matching_tags:
-                    self.listbox.insert(tk.END, tag)
-
-                # Show the listbox if there are matching tags
-                self.listbox.grid()
-            else:
-                # Hide the listbox if no matches are found
-                self.listbox.grid_remove()
-        else:
-            # Hide the listbox if the input is empty
-            self.listbox.grid_remove()
-
-    def focus_listbox(self, event):
-        # If there are items in the listbox, select the first one and focus the listbox
-        if self.listbox.size() > 0:
-            self.listbox.selection_set(0)  # Select the first item
-            self.listbox.activate(0)       # Make the first item active
-            self.listbox.focus_set()       # Move focus to the listbox
-
-    def on_select(self, event):
-        # Get the selected tag from the listbox
-        selected = self.listbox.curselection()
-        if selected:
-            self.selected_tag = self.listbox.get(selected[0])[0]
-            self.ok()  # Close the dialog
-
-    def apply(self):
-        # Get the final tag value (from entry or listbox)
-        if not self.selected_tag:
-            self.selected_tag = self.entry.get()   
 
 class MainWindow:
     def __init__(self, master):
@@ -263,12 +150,15 @@ class MainWindow:
         #self.canvas_view.display_chapter(reset_scrollbar = True)
         #self.canvas_view.reset_scrollregion()
         
-    def dbManager_callback(self, clickdata = None):
-        #print("Clickdata:",clickdata)
-        item="tagClick"
-        data = {'ref':clickdata, 'id':None}
-        self.options_panel.display_attributes(item, data)
+    def dbManager_callback(self, clickdata = None, item = "tagClick"):
         #this function will either focus a tag or a verse, depending on what was clicked in the secondary window
+        if item == "tagClick":
+            data = {'ref':clickdata, 'id':None}
+            self.options_panel.display_attributes(item, data)
+        else:
+            item = "verseClick"
+            data = {"verse": None, "ref": clickdata}
+            self.options_panel.display_attributes(item, data)
         self.master.focus_force()
 
 class NavigationTree:
@@ -966,7 +856,7 @@ class OptionsPanel:
             xb_width = self.canvasFont.measure(" x ")
             tagx = 0
 
-            checklist = self.tags_list
+            checklist = self.tags_list.copy()
             synonymlist = []
             
             #get all synonymous tags
@@ -1117,7 +1007,8 @@ class OptionsPanel:
 
     def create_tag(self, event, verse, reftype):
         #tag = simpledialog.askstring("Add Tag", "Enter Tag:", initialvalue="") #OLD WAY -- no tag suggestions
-        tag = TagInputDialog(self.master).selected_tag
+        global open_db_file
+        tag = TagInputDialog(self.master,open_db_file).selected_tag
         #print("the selected tag is:",tag,type(tag))
         #print("Do the tag creation logic here")
         if (tag is not None) and (tag != ""):
