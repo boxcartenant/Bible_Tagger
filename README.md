@@ -8,7 +8,7 @@ It's written in Python with TKinter, with a 3-column interface:
 The columns are resizable (there's an invisible "sash" between each column that you can drag left and right).
 
 ![image info](Screenshots/Screenshot5.png)
-![image info](Screenshots/Screenshot2.png)
+![image info](Screenshots/Screenshot6.png)
 
 I programmed this around the output of SWORD-to-JSON. Here's the link to that: https://github.com/wasdin/SWORD-to-JSON . A copy of it (which I had to modify to make it work for me) is included in here. 
 
