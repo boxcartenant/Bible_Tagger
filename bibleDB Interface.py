@@ -123,7 +123,7 @@ class MainWindow:
     def cause_canvas_to_refresh(self):
         self.canvas_view.display_chapter()
     
-    def options_callback(self, data):
+    def options_callback(self, data, scrollreset = False):
         #this is used when you are looking at tag xref data and you click a verse associated with the tag.
         #causes the tree and canvas to navigate to the verse you clicked.
         #data = (startverse, endverse)
@@ -141,8 +141,11 @@ class MainWindow:
 
         #navigate to the first verse in the range
         navtreedata = "/"+bibledb_Lib.book_proper_names[start['sb']]+"/Ch "+start['sc']
-
-        scrollreset = checkbook != self.canvas_view.selected_start_b
+        
+        if not scrollreset:
+            #Sometimes if you are clicking a verse in tag data for a chapter you already have open, you'll already be looking at that verse
+            # and have scrolled to a place you want. In that case, I don't want it to change where you've scrolled in the chapter.
+            scrollreset = checkbook != self.canvas_view.selected_start_b
         self.navigation_tree.select_item(navtreedata, scrollreset)
         
         self.options_panel.display_attributes("verseClick", {"verse": "This part of the code was never implemented", "ref": combineVRefs(data[0],data[1])}, False)
@@ -155,10 +158,9 @@ class MainWindow:
         if item == "tagClick":
             data = {'ref':clickdata, 'id':None}
             self.options_panel.display_attributes(item, data)
-        else:
-            item = "verseClick"
-            data = {"verse": None, "ref": clickdata}
-            self.options_panel.display_attributes(item, data)
+        else: #"verseClick"
+            #Scrollreset is True so that, if we're clicking back and forth between verses in the same chapter, it will just go ahead and highlight them.
+            self.options_callback(clickdata, True)
         self.master.focus_force()
 
 class NavigationTree:
@@ -472,7 +474,7 @@ class CanvasView:
         textlineheight = Font.metrics(self.canvasFont)["linespace"]
         boldlineheight = Font.metrics(self.boldFont)["linespace"]
         global textlinegap, fbdCircleDiam, textelbowroom
-        
+        selected_y_offset = None
         item_hierarchy = item.split('/')
         #print(item_hierarchy)
         if len(item_hierarchy) > 2:
@@ -508,6 +510,7 @@ class CanvasView:
 
             #print("book:",sb, b, eb,"\nchapter:",sc,c,ec,"\nverse:",sv, v, ev)
             verse_heights = []
+
             for verse in data:
                 textColor = "black"
                 #if the current verse is in the user-selected range, highlight it.
@@ -518,13 +521,17 @@ class CanvasView:
                     (eb == b and ec > c) or\
                     (eb > b)):
                     textColor = "maroon"
+                    #record the y-offset of the first selected verse so we can navigate to it later.
+                    if selected_y_offset is None:
+                        selected_y_offset = y_offset - textlinegap - boldlineheight*2
+                        if selected_y_offset < 0:
+                            selected_y_offset = 0
 
                 
                 vtop = y_offset - textlinegap
                 
                 verseRef = str(item).replace("/Ch "," ").replace("/","")+":"+str(v)
                 #print(verseRef)
-                lineNotPrinted = True
                 #Print the verse number in italics
                 text_object = self.canvas.create_text(x_offset, y_offset, text=str(v), anchor=tk.NW, fill = textColor, font = self.italicFont)
                 self.canvas.tag_bind(text_object, '<Button-1>', lambda event, item_id=text_object, vref=verseRef, verse=verse, vnum = v: self.on_text_click(event, verse, vref, vnum))
@@ -590,9 +597,18 @@ class CanvasView:
 
         # Configure the scroll region to make the canvas scrollable
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+
+        #if we're navigating to a new chapter, start at the top.
         if(reset_scrollbar):
+            #if there is a verse selected in this chapter, go ahead and scroll to it.
+            if selected_y_offset is not None:
+                canvas_height = self.canvas.winfo_height()
+                scroll_target = selected_y_offset/self.canvas.bbox("all")[3] #scroll percentage
+                self.canvas.yview_moveto(scroll_target)
+            else:
+                #tbh I'm not sure when this part of the if-statement will ever be called anymore.
+                self.canvas.yview_moveto(0)
             self.canvas.xview_moveto(0)
-            self.canvas.yview_moveto(0)
         #canvas_width = self.canvas.winfo_reqwidth()
         #canvas_height = self.canvas.winfo_reqheight()
         #print("width, height", canvas_width, canvas_height)
