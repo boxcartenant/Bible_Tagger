@@ -35,7 +35,7 @@ def combineVRefs(vref1, vref2):
         print("vref2 =", vref2)
         return vref1
     if bA != bB: #different book
-        if bibledb_Lib.book_proper_names.index(bA) < bibledb_Lib.book_proper_names.index(bB):
+        if bibledb.book_proper_names.index(bA) < bibledb.book_proper_names.index(bB):
             return(bA+" "+cA + ":" + vA + " - " + bB + " " +cB + ":" + vB)
         else:
             return(bB+" "+cB + ":" + vB + " - " + bA + " " +cA + ":" + vA)
@@ -101,6 +101,7 @@ class TagInputDialog(simpledialog.Dialog):
         self.entry.bind("<KeyRelease>", self.update_suggestions)
         self.entry.bind("<Down>", self.focus_listbox)  # Bind down arrow key
         self.listbox.bind("<Double-1>", self.on_select)
+        self.listbox.bind('<Button-1>', self.quick_select)
         self.listbox.bind("<Return>", self.on_select)  # Bind enter key in listbox
         return self.entry  # Focus on entry widget
 
@@ -134,7 +135,16 @@ class TagInputDialog(simpledialog.Dialog):
             self.listbox.activate(0)       # Make the first item active
             self.listbox.focus_set()       # Move focus to the listbox
 
+    def quick_select(self, event):
+        #print("quick select")
+        index = self.listbox.nearest(event.y)
+        if index >= 0:
+            selected_text = self.listbox.get(index)[0]
+            self.entry.delete(0,tk.END)
+            self.entry.insert(0,selected_text)
+    
     def on_select(self, event):
+        #print("on select")
         # Get the selected tag from the listbox
         selected = self.listbox.curselection()
         if selected:
@@ -142,6 +152,7 @@ class TagInputDialog(simpledialog.Dialog):
             self.ok()  # Close the dialog
 
     def apply(self):
+        #print("apply")
         selected = None
         # Get the final tag value (from entry or listbox)
         if self.topselection and self.listbox.size() > 0:
@@ -758,21 +769,21 @@ class RightHandFrame(ttk.Frame):
                 #    I am making this tool primarily for myself to use, and I don't include the apocrypha in my Bible, so I don't plan to fix this.
                 
                 verses.sort(key=lambda r: (r[0], r[1], r[2]))#sort by start book first, then chapter, then verse, so all the verses appear in order
-                self.verse_xref_list = [combineVRefs(bibledb.book_proper_names[q[0]]+" "+str(q[1])+":"+str(q[2]), bibledb.book_proper_names[q[3]]+" "+str(q[4])+":"+str(q[5])) for q in verses]
+                self.verse_xref_list = [(bibledb.book_proper_names[q[0]]+" "+str(q[1])+":"+str(q[2]), bibledb.book_proper_names[q[3]]+" "+str(q[4])+":"+str(q[5])) for q in verses]
             except:
                 self.verse_xref_list = []
                 print("Failed to get the verse references for that tag. This error might occur if your DB was made with a version of the Bible that had different books from the version you're currently using. For example, if the DB was made including the apocrypha, but your current Bible doesn't have it.")
             self.canvas.itemconfigure(versecount_text, text = "total verse count: " +str(len(self.verse_xref_list)))
             tagx = 0
             for xverse in self.verse_xref_list:
-                #itemText = combineVRefs(xverse[0],xverse[1])
-                button_width = self.canvasFont.measure(xverse) + 2*textelbowroom
+                itemText = combineVRefs(xverse[0],xverse[1])
+                button_width = self.canvasFont.measure(itemText) + 2*textelbowroom
                 if button_width + tagx + x_offset + right_x_offset > panelWidth:
                     tagx = 0
                     y_offset += textlineheight + textlinegap*3
                 clicktag = "verse_click_"+str(tagx)+"_"+str(y_offset)
                 self.canvas.create_rectangle(x_offset+tagx, y_offset, x_offset+tagx+button_width, y_offset+textlineheight+textlinegap*2, fill='azure', tags=clicktag)
-                self.canvas.create_text(x_offset+tagx+textelbowroom, y_offset+textlinegap, text=xverse, anchor=tk.NW, font = self.canvasFont, tags=clicktag)
+                self.canvas.create_text(x_offset+tagx+textelbowroom, y_offset+textlinegap, text=itemText, anchor=tk.NW, font = self.canvasFont, tags=clicktag)
                 self.canvas.tag_bind(clicktag, '<Button-1>', lambda event, payload=xverse: self.on_verse_click(event, payload))
                 tagx += button_width
             #print("test 3")
