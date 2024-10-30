@@ -167,7 +167,7 @@ class TagInputDialog(simpledialog.Dialog):
             # If no highlighted items and no matching items, select the first item
             if not has_selected_items:
                 if matching_index is not None:
-                    print("found!")
+                    #print("found!")
                     # If an identical item is found, select it
                     self.listbox.selection_set(matching_index)
                     self.listbox.activate(matching_index)  # Make the matching item active
@@ -335,30 +335,40 @@ class SecondaryWindow:
             self.canvas.create_text(10, 30, text="Select a verse to load a DB.", fill="green", font = self.canvasFont)
         else:
             #get all the tags
-            checklist = [b['tag'] for b in bibledb.get_tag_list(self.dbdata)]
+            checklist = [b['tag'] for b in bibledb.get_tag_list(self.dbdata)] #all the tags
             
-            syngroups = []
-            synonymlist = []
-            checkedlist = []   
+            syngroups = []   #each indice is a list of synonymous tags
+            synonymlist = [] #a group of synonymous tags to be added to syngroups
+            checkedlist = [] #tags we've already dealt with. So we don't deal with them again.
+            synonyms = []    #a working list of tags we're in the middle of finding synonyms for
             
             for tag in checklist:
                 if tag not in checkedlist:
                     checkedlist.append(tag)
-
-                    def recursivesynonyms(syno, thisgroup):
-                        synonyms = [b['tag'] for b in bibledb.get_db_stuff(self.dbdata,"tag","tag",syno)]
-                        for tag in synonyms:
-                            if tag not in thisgroup:
-                                thisgroup.append(tag)
-                                thisgroup = recursivesynonyms(tag, thisgroup)
-                        return thisgroup
+                    synonymlist.append(tag)
+                    synonyms = [b['tag'] for b in bibledb.get_db_stuff(self.dbdata,"tag","tag",tag)]
+                    while len(synonyms) > 0:
+                        synonym = synonyms.pop()
+                        if synonym not in checkedlist:
+                            checkedlist.append(synonym)
+                            synonymlist.append(synonym)
+                            synonyms += [b['tag'] for b in bibledb.get_db_stuff(self.dbdata,"tag","tag",synonym)]
                     
-                    synonymlist = recursivesynonyms(tag, [tag])
-                    
-                    for s in synonymlist:
-                        if s != tag:
-                            checkedlist.append(s)
-                        
+                  #  #OLD Recursive way of getting syngroups
+                  #  def recursivesynonyms(syno, thisgroup):
+                  #      synonyms = [b['tag'] for b in bibledb.get_db_stuff(self.dbdata,"tag","tag",syno)]
+                  #      for tag in synonyms:
+                  #          if tag not in thisgroup:
+                  #              thisgroup.append(tag)
+                  #              thisgroup = recursivesynonyms(tag, thisgroup)
+                  #      return thisgroup
+                  #  
+                  #  synonymlist = recursivesynonyms(tag, [tag])
+                  #  
+                  #  for s in synonymlist:
+                  #      if s != tag:
+                  #          checkedlist.append(s)
+                  #      
                     syngroups.append({"tags":synonymlist})
                     synonymlist = []
                 
@@ -366,6 +376,7 @@ class SecondaryWindow:
             syngroups_lo = 9223372036854775807
             syngroups_hi = 0
             #count the unique verses for the synonym group
+            #these low and high values are used to scale bargraph lengths and colors
             verses = []
             for i in range(len(syngroups)):
                 for tag in syngroups[i]["tags"]:
@@ -671,9 +682,6 @@ class RightHandFrame(ttk.Frame):
 
                 # Go through each selected tag in self.tags_list
                 for tag in self.tags_list:
-                    # Get all synonyms for the current tag (including the tag itself)
-                    synonyms = bibledb.get_db_stuff(self.dbdata, "tag", "tag", tag)
-                    
                     #prepare the verse set for this tag and its synonyms by getting the verses for this tag first.
                     verse_set = set()
                     #print("tag", tag)
@@ -681,14 +689,19 @@ class RightHandFrame(ttk.Frame):
                     #print("vd 1", vd)
                     #convert the verse data to a tuple of numbers to make it hashable for some list functions
                     verse_set.update(((m["start_book"],m["start_chapter"],m["start_verse"],m["end_book"],m["end_chapter"],m["end_verse"]) for m in vd))
-                    
-                    for synonym in synonyms:
+
+                    # Get all synonyms for the current tag (including the tag itself)
+                    synonyms = bibledb.get_db_stuff(self.dbdata, "tag", "tag", tag)
+                    #for synonym in synonyms:
+                    while len(synonyms) > 0:
+                        synonym = synonyms.pop()
                         #make the synonymlist which will be used for the tags
-                        if synonym['tag'] not in self.tags_list:
+                        if synonym['tag'] not in checklist:
                             #synonyms won't have a delete button on the display, so we group them in the list in order to make it clear what they are.
                             index = checklist.index(tag)
                             checklist.insert(index+1,synonym['tag'])
                             synonymlist.append(synonym['tag'])
+                            synonyms += bibledb.get_db_stuff(self.dbdata, "tag", "tag", synonym['tag'])
                         # add the verses for every synonym
                         vd = bibledb.get_db_stuff(self.dbdata, "verse", "tag", synonym['tag'])
                         #print("vd 2", vd)
