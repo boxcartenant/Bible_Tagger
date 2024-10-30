@@ -256,6 +256,33 @@ class SecondaryWindow:
         #go ahead and display contents
         self.display_attributes()
 
+        self.active_panel = None
+        self.top_window.bind("<MouseWheel>", self.scroll_active_panel)
+        self.canvas.bind("<Enter>", self.set_active_panel)
+        self.canvas.bind("<Leave>", self.clear_active_panel)
+        self.rightFrame.canvas.bind("<Enter>", self.set_active_panel)
+        self.rightFrame.canvas.bind("<Leave>", self.clear_active_panel)
+
+    def set_active_panel(self, event):
+        # Set the active panel to the widget under the mouse
+        self.active_panel = event.widget
+        #print("active_panel",self.active_panel)
+
+    def clear_active_panel(self, event):
+        # Clear the active panel when the mouse leaves
+        self.active_panel = None
+
+    def scroll_active_panel(self, event):
+        # Only scroll the active panel
+        #print("scrolling active_panel",self.active_panel)
+        if self.active_panel:
+            first, last = self.active_panel.yview()  # Get scrollbar position
+            if event.delta > 0 and first <= 0:  # Trying to scroll up but already at the top
+                return  # Do nothing
+            if event.delta < 0 and last >= 1:  # Trying to scroll down but already at the bottom
+                return
+            self.active_panel.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
     def on_resize(self, event):
         #this is for instances where the bargraph canvas is resized.
 
