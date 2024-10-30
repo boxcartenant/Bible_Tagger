@@ -142,10 +142,10 @@ class MainWindow:
         #navigate to the first verse in the range
         navtreedata = "/"+bibledb_Lib.book_proper_names[start['sb']]+"/Ch "+start['sc']
         
-        if not scrollreset:
+        #if not scrollreset:
             #Sometimes if you are clicking a verse in tag data for a chapter you already have open, you'll already be looking at that verse
-            # and have scrolled to a place you want. In that case, I don't want it to change where you've scrolled in the chapter.
-            scrollreset = checkbook != self.canvas_view.selected_start_b
+            # and have scrolled to a place you want. In that case, maybe you don't want it to reset....
+            #scrollreset = checkbook != self.canvas_view.selected_start_b
         self.navigation_tree.select_item(navtreedata, scrollreset)
         
         self.options_panel.display_attributes("verseClick", {"verse": "This part of the code was never implemented", "ref": combineVRefs(data[0],data[1])}, False)
@@ -865,25 +865,28 @@ class OptionsPanel:
 
             # LIST OF TAGS ##---- DONE
 
-            #Check the DB for tags for the selected verse
-            # (here we are assuming that we're showing a verse. Later we need to add support for showing tag data)
+            #Check the DB for tags for the selected verse or tag
             self.tags_list = bibledb_Lib.get_db_stuff(open_db_file, "tag", type_to_get, self.current_data["ref"])
 
             xb_width = self.canvasFont.measure(" x ")
             tagx = 0
 
-            checklist = self.tags_list.copy()
+            checklist = self.tags_list.copy() #copy so that we can modify the list while iterating through the unchanged version of it.
             synonymlist = []
+            #print("checklist",checklist)
             
             #get all synonymous tags
             for tag in checklist:
                 synonyms = bibledb_Lib.get_db_stuff(open_db_file,"tag","tag",tag['tag'])
-                for synonym in synonyms:
+                while len(synonyms) > 0:
+                #for synonym in synonyms:
+                    synonym = synonyms.pop()
                     if synonym not in self.tags_list and synonym['tag'] != self.current_data["ref"]:
                         #synonyms won't have a delete button on the display, so we group them in the list in order to make it clear what they are.
                         index = self.tags_list.index(tag)
                         self.tags_list.insert(index+1,synonym)
                         synonymlist.append(synonym)
+                        synonyms += bibledb_Lib.get_db_stuff(open_db_file,"tag","tag",synonym['tag'])
 
             
             #show the tags list
@@ -958,6 +961,7 @@ class OptionsPanel:
                     # If the user makes a DB using a version of the Bible that has the apocrypha, and then tries to pull notes about Revelation from that DB while he has a protestant Bible loaded...
                     #    then the reference to bibledb_Lib.book_proper_names[] will throw an index out of range error.
                     #    I am making this tool primarily for myself to use, and I don't include the apocrypha in my Bible, so I don't plan to fix this.
+                    verses.sort(key=lambda r: (r["start_book"], r["start_chapter"], r["start_verse"]))
                     self.verse_xref_list = [(bibledb_Lib.book_proper_names[x["start_book"]]+" "+str(x["start_chapter"])+":"+str(x["start_verse"]), bibledb_Lib.book_proper_names[x["end_book"]]+" "+str(x["end_chapter"])+":"+str(x["end_verse"])) for x in verses]
                 except:
                     self.verse_xref_list = []
