@@ -676,7 +676,7 @@ class RightHandFrame(ttk.Frame):
             # CREATE TAG BUTTON ##---- DONE
             buttonX = x_offset
             # Create all the option buttons
-            buttonText = "Add Tag"
+            buttonText = "Search Tag"
             button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
             self.create_tag_button_rect = self.canvas.create_rectangle(buttonX, y_offset, buttonX + button_width, y_offset + textlineheight + 2*textelbowroom, fill='azure', tags='create_tag_button')
             self.canvas.create_text(buttonX+textelbowroom, y_offset+textelbowroom, text=buttonText, anchor=tk.NW, font=self.canvasFont, tags = 'create_tag_button')#button text for open db
