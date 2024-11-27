@@ -146,7 +146,8 @@ class MainWindow:
             #Sometimes if you are clicking a verse in tag data for a chapter you already have open, you'll already be looking at that verse
             # and have scrolled to a place you want. In that case, maybe you don't want it to reset....
             #scrollreset = checkbook != self.canvas_view.selected_start_b
-        self.navigation_tree.select_item(navtreedata, scrollreset)
+        #self.navigation_tree.select_item(navtreedata, scrollreset)
+        self.navigation_tree.select_item(navtreedata, True) #changed this to "true" so it will always jump to the selected verse.
         
         self.options_panel.display_attributes("verseClick", {"verse": "This part of the code was never implemented", "ref": combineVRefs(data[0],data[1])}, False)
         self.options_panel.reset_scrollregion(None)
