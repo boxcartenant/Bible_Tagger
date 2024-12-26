@@ -200,6 +200,10 @@ class NavigationTree:
         
         self.paned_window.add(self.tree_frame)
         self.tree.bind("<ButtonRelease-1>", self.on_tree_item_click)
+        self.tree.bind("<KeyRelease-Up>", self.on_tree_item_click)
+        self.tree.bind("<KeyRelease-Down>", self.on_tree_item_click)
+        self.tree.bind("<KeyRelease-Left>", self.on_tree_item_click)
+        self.tree.bind("<KeyRelease-Right>", self.on_tree_item_click)
         
     def populate_tree(self, data, parent_id):
         for key, value in data.items():
@@ -218,10 +222,21 @@ class NavigationTree:
         #self.tree.tag_configure("allchapters",foreground='black')
         blue_chapters = list(set(marked_chapters) - set(self.marked_chapters))
         black_chapters = list(set(self.marked_chapters) - set(marked_chapters))
+        blue_books = {self.tree.parent(chapter) for chapter in blue_chapters}
+        black_books = {self.tree.parent(chapter) for chapter in black_chapters}
+        
         for chapter in blue_chapters:
             self.tree.tag_configure(chapter,foreground='blue')
         for chapter in black_chapters:
             self.tree.tag_configure(chapter,foreground='black')
+
+        for book in blue_books:
+            self.tree.item(book, tags=("blue_book",))
+        for book in black_books:
+            self.tree.item(book, tags=("black_book",))
+        self.tree.tag_configure("blue_book", foreground='blue')
+        self.tree.tag_configure("black_book", foreground='black')
+        
         self.marked_chapters = marked_chapters
         root.update()
 
