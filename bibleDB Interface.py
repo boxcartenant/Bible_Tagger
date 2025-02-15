@@ -8,6 +8,7 @@ from tkinter import simpledialog
 from tkinter import messagebox
 from bibledb_Manager import SecondaryWindow
 from bibledb_Manager import TagInputDialog, combineVRefs
+import os, re
 
 textlinegap = 2
 windowsize = "1000x600"
@@ -31,6 +32,7 @@ def wrapText(text, width, font):
     if line != '':
         lines.append(line)
     return lines
+
 
 class MainWindow:
     def __init__(self, master):
@@ -289,6 +291,16 @@ class NavigationTree:
             #clicking white space on the list throws this error. Just don't update the item.
             pass 
 
+    def load_json(self, file_path):
+        global data_model
+        with open(file_path, 'r') as file:
+            content = file.read()
+        data_model = bibledb_Lib.getBibleData(content)
+        #print("dumping output from open_file_dialog")
+        #print(data_model)
+        self.populate_tree(data_model, '')
+        self.data_model_loaded = True
+        self.open_button.configure(text = "Tag DB Statistics")
     
     def open_file_dialog(self):
         #button to open a Bible file
@@ -297,14 +309,7 @@ class NavigationTree:
             file_path = filedialog.askopenfilename(defaultextension=".json", filetypes=[("JSON Bibles", "*.json"), ("All files", "*.*")])
             if file_path and file_path[-5:] == '.json':
                 print(f"Selected file: {file_path}")
-                with open(file_path, 'r') as file:
-                    content = file.read()
-                data_model = bibledb_Lib.getBibleData(content)
-                #print("dumping output from open_file_dialog")
-                #print(data_model)
-                self.populate_tree(data_model, '')
-                self.data_model_loaded = True
-                self.open_button.configure(text = "Tag DB Statistics")
+                self.load_json(file_path)
             else:
                 print("Invalid file! It's gotta be a json file. Funny thing about this: you could use this program to make notes about any kind of JSON data which is organized in a way similar to a supported Bible JSON file.")
         else:#subsequent clicks, open the db manager
@@ -1093,19 +1098,28 @@ class OptionsPanel:
                 self.update_tree_colors()
     
     ##### DB LOAD SAVE
+    def load_bdb(self, file_path, no_verse = False):
+        # Store the open file in a global variable
+        
+        global open_db_file
+        open_db_file = file_path
+        if no_verse:
+            # item = "verseClick" if a verse was clicked
+            # data = {"verse": the verse text, "ref": the verse reference}
+            self.display_attributes(item = "verseClick", data={"verse":"", "ref": "Deuteronomy 4:2"})
+        else:
+            self.display_attributes()
+        self.cause_canvas_to_refresh()
+        self.update_tree_colors()
+        
     def load_db(self, event):
         print("trying to load a db")
         # Implement your logic to open the browse window and load the database
         file_path = filedialog.askopenfilename(defaultextension=".bdb", filetypes=[("Sqlite Bible Files", "*.bdb"), ("All files", "*.*")])
         if file_path:
             if file_path[-4:] == ".bdb":
-                # Store the open file in a global variable
-                global open_db_file
-                open_db_file = file_path
                 print(f"Loaded DB: {file_path}")
-                self.display_attributes()
-                self.cause_canvas_to_refresh()
-                self.update_tree_colors()
+                self.load_bdb(file_path)
             else:
                 print("I'm not opening that. It's gotta be a SQLITE database file with the extension \".bdb\"")
 
@@ -1123,6 +1137,10 @@ class OptionsPanel:
             self.cause_canvas_to_refresh()
             print(f"Selected or created file: {file_path}")
 
+
+
+
+
 if __name__ == "__main__":
     
     root = tk.Tk()
@@ -1135,6 +1153,37 @@ if __name__ == "__main__":
     
     
     main_window = MainWindow(root)
+
+    def load_json(jsonpath):
+        main_window.navigation_tree.load_json(jsonpath)
+
+    def load_bdb(bdbpath):
+        main_window.options_panel.load_bdb(bdbpath, True)
+    
+    def search_and_load():
+        config_filename = "config.txt"
+        
+        if not os.path.exists(config_filename):
+            print("no config file found. If you want to auto-load your json and bdb, make a config.txt with both file paths in the program folder.")
+            return  # File does not exist, return without action
+        
+        jsonpath = None
+        bdbpath = None
+        
+        with open(config_filename, "r", encoding="utf-8") as file:
+            for line in file:
+                line = line.strip()
+                if line.endswith(".json"):
+                    jsonpath = line
+                elif line.endswith(".bdb"):
+                    bdbpath = line
+        
+        if jsonpath and bdbpath:
+            print("found config file. Loading:\n",jsonpath,"\n",bdbpath)
+            load_json(jsonpath)
+            load_bdb(bdbpath)
+
+    search_and_load()
     #main_window = MainWindow(root, data_model)
 
     root.mainloop()
