@@ -4,6 +4,8 @@ from tkinter import Misc
 import bibledb_Lib as bibledb
 from tkinter import simpledialog
 from tkinter.font import Font
+from openpyxl import Workbook
+from tkinter import filedialog
 
 def combineVRefs(vref1, vref2):
     #get the verse reference and store in self.current_data['ref']
@@ -79,7 +81,7 @@ def color_gradient(length, min_length, max_length, type_selection):
 
 class TagInputDialog(simpledialog.Dialog):
     #inherits simpledialog to make a tag input dialog with a dropdown suggestion list
-    def __init__(self, parent, dbdata, topselection = False, get_tags_like=bibledb.get_tags_like):
+    def __init__(self, parent, dbdata, topselection = False, get_tags_like=bibledb.get_tags_like, thistitle="Add Tag", bookinputdialog=False):
         #if topselection is false, entering a new tagname will return the new tagname
         #if topselection is true, entering a new tagname will return the top item in the list box
         #get_tags_like is a callback to whatever function you intend to use to find similar tags. (maybe unnecessary for this to be an argument)
@@ -87,7 +89,8 @@ class TagInputDialog(simpledialog.Dialog):
         self.get_tags_like = get_tags_like
         self.selected_tag = None
         self.dbdata = dbdata
-        super().__init__(parent, title="Add Tag")
+        self.bookinputdialog = bookinputdialog
+        super().__init__(parent, title=thistitle)
 
     def body(self, master):
         # Entry for typing tag
@@ -139,7 +142,10 @@ class TagInputDialog(simpledialog.Dialog):
         #print("quick select")
         index = self.listbox.nearest(event.y)
         if index >= 0:
-            selected_text = self.listbox.get(index)[0]
+            if self.bookinputdialog:
+                selected_text = self.listbox.get(index)
+            else:
+                selected_text = self.listbox.get(index)[0]
             self.entry.delete(0,tk.END)
             self.entry.insert(0,selected_text)
     
@@ -147,7 +153,10 @@ class TagInputDialog(simpledialog.Dialog):
         #print("on select")
         # Get the selected tag from the listbox
         selected = self.listbox.curselection()
-        if selected:
+        if self.bookinputdialog and selected:
+            self.selected_tag = self.listbox.get(selected[0])
+            self.ok()
+        elif selected:
             self.selected_tag = self.listbox.get(selected[0])[0]
             self.ok()  # Close the dialog
 
@@ -162,6 +171,9 @@ class TagInputDialog(simpledialog.Dialog):
             # Check if there are no items identical to the string from self.entry.get()
             search_string = self.entry.get()
             #print(search_string, [self.listbox.get(i) for i in range(self.listbox.size())])
+            #if self.bookinputdialog:
+            #    matching_index = next((i for i in range(self.listbox.size()) if self.listbox.get(i) == search_string), None)
+            #else:
             matching_index = next((i for i in range(self.listbox.size()) if self.listbox.get(i)[0] == search_string), None)
     
             # If no highlighted items and no matching items, select the first item
@@ -177,7 +189,9 @@ class TagInputDialog(simpledialog.Dialog):
                     self.listbox.activate(0)       # Make the first item active
                 self.listbox.focus_set()       # Move focus to the listbox
                 selected = self.listbox.curselection()
-        if selected:
+        if selected and self.bookinputdialog:
+            self.selected_tag = self.listbox.get(selected[0])
+        elif selected:
             self.selected_tag = self.listbox.get(selected[0])[0]
         elif not self.selected_tag:
             self.selected_tag = self.entry.get()   
@@ -198,7 +212,9 @@ class SecondaryWindow:
         self.sortmode = "alphabet" #toggles between "alphabet" and "usage"
         self.colormode_text = "Toggle Colors"
         self.colormode = "plain" #toggles: "plain", "redblue", "purpleyellow"
-        
+        self.export_tags_this_time = False
+        self.export_tags_path = "./"
+        self.all_tags_list = [] # this variable contains the tags sorted by usage. It is used by right_hand_frame to export tag/note/verses 
 
         # Set up the secondary window
         self.top_window = tk.Toplevel(master)
@@ -234,7 +250,7 @@ class SecondaryWindow:
         self.this_window.add(self.myFrame)
 
         #add another frame to the right-hand side of the window. We're using two columns now, baby!
-        self.rightFrame = RightHandFrame(self.master, self.this_window, self.callback, self.dbdata)
+        self.rightFrame = RightHandFrame(self.master, self.this_window, self.callback, self.dbdata, self)
         self.rightFrame.grid(row=0, column=1, sticky="nsew")
         self.this_window.add(self.rightFrame)
 
@@ -338,6 +354,13 @@ class SecondaryWindow:
             self.colormode = "plain"
         self.display_attributes()
 
+    def on_exporttags_click(self, event):
+        self.export_tags_this_time = True
+        self.export_tags_path = filedialog.asksaveasfilename(defaultextension=".xls", filetypes=[("Excel", "*.xls"), ("All files", "*.*")])
+        if self.export_tags_path:
+            self.export_tags_this_time = True
+        self.display_attributes()
+
     def display_attributes(self, dbstuff = None):
         #shows all the tags
         x_offset = 5
@@ -417,6 +440,7 @@ class SecondaryWindow:
                 if syngroups[i]["verses"] > syngroups_hi:
                     syngroups_hi = syngroups[i]["verses"]
                 verses = []
+                                
 
             tags_lo = 9223372036854775807
             tags_hi = 0
@@ -459,8 +483,20 @@ class SecondaryWindow:
             self.canvas.create_text(color_x_offset+textelbowroom, y_offset+textelbowroom, text=buttonText, anchor=tk.NW, font=self.canvasFont, tags='on_colormode_click')
             self.canvas.tag_bind('on_colormode_click', '<Button-1>', self.on_colormode_click)
 
-            y_offset += 10 + textlineheight + 2*textelbowroom
+            buttonText = "Export List"
+            export_button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
+            export_x_offset = color_x_offset
+            if export_x_offset + textelbowroom*2 + color_button_width + export_button_width < panelWidth:
+                export_x_offset += color_button_width + textelbowroom*2
+            else:
+                export_x_offset = x_offset
+                y_offset += 10 + textlineheight + 2*textelbowroom
+            self.canvas.create_rectangle(export_x_offset, y_offset, export_x_offset+export_button_width,y_offset + textlineheight + 2*textelbowroom, fill='snow', tags='on_exporttags_click')
+            self.canvas.create_text(export_x_offset+textelbowroom, y_offset+textelbowroom, text=buttonText, anchor=tk.NW, font=self.canvasFont, tags='on_exporttags_click')
+            self.canvas.tag_bind('on_exporttags_click', '<Button-1>', self.on_exporttags_click)
 
+            y_offset += 10 + textlineheight + 2*textelbowroom
+            
             #now we have...
             # tags -- ["tagname","tagname1","tagname2",...]
             # tagverses -- [versecount, versecount1, versecount2,...]
@@ -477,6 +513,15 @@ class SecondaryWindow:
             #self.colormode_text = "color" #the button text
             #self.colormode = "plain" #toggles: "plain", "redblue", "purpleyellow"
 
+            #prepare the workbook
+            workbook = None
+            sheet = None
+            if self.export_tags_this_time:
+                workbook = Workbook()
+                sheet = workbook.active
+                wbheader = ["Verse Count", "Tags..."]
+                sheet.append(wbheader)
+                
             if self.sortmode == "alphabet":
                 sorted_tags = sorted(tags, key=lambda x: x["tag"])
                 sorted_syngroups = [(syngroups.index(lst), lst["tags"].index(dct["tag"])) for dct in sorted_tags for lst in syngroups if dct["tag"] in lst["tags"]]
@@ -485,13 +530,19 @@ class SecondaryWindow:
                 #sorted_tags = sorted(tags, key=lambda x: x["verses"], reverse = True) #reverse to put the most-used tags on top
                 sorted_syngroups = sorted(syngroups, key=lambda x: x["verses"], reverse = True)
             tagnum = 0
+            self.all_tags_list = [s["tags"] for s in sorted(syngroups, key=lambda x: x["verses"], reverse = True)]# this variable is used by right_hand_frame to export tag/note/verses 
             for s in sorted_syngroups:
+                #print(s)
                 if self.sortmode == "alphabet":
+                    #in this case, s is a list of tuples, representing the index of the tag in syngroups.
                     tags = [syngroups[s[0]]["tags"][s[1]]]
                     verses = syngroups[s[0]]["verses"]
                 elif self.sortmode == "usage":
+                    #in this case, s is a dict, like {'tags': ['beard', 'hair', 'beards'], 'verses': 4}
                     tags = s["tags"]
                     verses = s["verses"]
+                if self.export_tags_this_time:
+                    sheet.append([verses]+tags)
 
                 barcolor = color_gradient(verses, syngroups_lo, syngroups_hi, self.colormode)
                 barlength = bargraph_size(verses, syngroups_lo, syngroups_hi, x_offset, panelWidth)
@@ -537,16 +588,22 @@ class SecondaryWindow:
                             tagx += 2
                     y_offset += textlineheight + textlinegap
                 y_offset += 10
+        if self.export_tags_this_time:
+            self.export_tags_this_time = False
+            workbook.save(self.export_tags_path)
+            print("Exported tags to: " + str(self.export_tags_path))
+            self.export_tags_path = None
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
 
 ###########################################Right Hand Frame is the verse sorting area. Probably not a useful name for it, now that I think about it.
 
 class RightHandFrame(ttk.Frame):
-    def __init__(self, master, parent, callback = None, dbdata = None, *args, **kwargs):
+    def __init__(self, master, parent, callback = None, dbdata = None, left_frame = None, *args, **kwargs):
         super().__init__(parent, *args, **kwargs)
         self.canvasFont = Font(size = 10)
         self.italicFont = Font(size = 10, slant = 'italic')
         self.boldFont = Font(size = 10, weight = 'bold')
+        self.left_frame = left_frame
         
         self.callback = callback
         self.dbdata = dbdata
@@ -579,6 +636,9 @@ class RightHandFrame(ttk.Frame):
         self.intersection = False #Show only the verses shared by all selected tags
         self.symmetric_difference = False #Show only the verses that are unique to only one of the selected tags
         self.verse_xref_list = []
+        self.selected_books = []
+        self.comments_only = False #only show verses with comments
+        self.shown_verses = [] #in case you want to do something with the verses that are currently visible
         
 
         # Configure the scroll region to make the canvas scrollable
@@ -590,6 +650,23 @@ class RightHandFrame(ttk.Frame):
         self.display_attributes()
         
         #self.canvas.create_text(10, 10, anchor="nw", text="Right-hand canvas content")
+
+    def get_books_like(self, dbdata, partial_book):
+        result = [book for book in bibledb.book_proper_names if partial_book.lower().strip() in book.lower().strip()]
+        return result
+    
+    def select_book(self, event):
+        selected_book = TagInputDialog(self.master, self.dbdata, topselection = True, get_tags_like = self.get_books_like, thistitle = "Select Books", bookinputdialog = True).selected_tag
+        if (selected_book is not None) and (selected_book != "") and (selected_book in bibledb.book_proper_names) and (selected_book not in self.selected_books):
+            self.selected_books.append(selected_book)
+            self.display_attributes()
+
+    def delete_book(self, event, bookname):
+        if bookname in self.selected_books:
+            self.selected_books.remove(bookname)
+            self.display_attributes()
+        else:
+            print("Tried removing a book that wasn't listed from the filter pane. Oh no!")
 
     def select_tag(self, event):
         #replace tagSelect() with the actual code for tag selection, to get the popup.
@@ -628,6 +705,81 @@ class RightHandFrame(ttk.Frame):
             self.union = True
         self.display_attributes()
 
+    def toggle_comments_only(self, wasted_memory):
+        self.comments_only = not self.comments_only
+        self.display_attributes()
+
+    def copy_verse_lists(self, event):
+        #puts the currently visible verse list in the clipboard
+        result = ""
+        for verse in self.shown_verses:
+            result += verse
+        root = tk._default_root
+        if root:
+            root.clipboard_clear()
+            root.clipboard_append(result)
+            root.update()
+        else:
+            print("ERROR in bibledb_Manager.copy_verse_list(). No access to root.")
+
+    def export_tags_and_synonyms(self, event):
+
+        def get_verses_for_taglist(tags):
+            result = []
+            for synonym_group in tags:
+                verses = []
+                notes = []
+                for tag in synonym_group:
+                    this_note = bibledb.get_db_stuff(self.dbdata, "note", "tag", tag)
+                    if this_note:
+                        this_note = this_note[0]['note']
+                        notes.append(this_note)
+                    checkverses = bibledb.get_db_stuff(self.dbdata, "verse", "tag", tag)
+                    for verse in checkverses:
+                        if verse not in verses:
+                            #print(verse)
+                            verses.append(verse)
+                #I don't know if these functions will work, but they're basically what's being done down below in display_verses
+                verses.sort(key=lambda r: (r['start_book'], r['start_chapter'], r['start_verse']))#sort by start book first, then chapter, then verse, so all the verses appear in order
+                verses = [bibledb.normalize_vref(q) for q in verses]
+                result.append({"tags":synonym_group,"notes":notes, "verses":verses})
+            return result
+        
+        #self.dbdata
+        tagslist = self.left_frame.all_tags_list
+        exportdata = get_verses_for_taglist(tagslist)
+        contents = ""
+        for item in exportdata:
+            for tag in item['tags']:
+                contents += tag + ", "
+            contents += '\n//////new note...\n'
+            for note in item['notes']:
+                contents += note + '\n\n'
+            for verse in item['verses']:
+                contents += verse + ', '
+            contents += "\n\n+=+=+=+=+=+=+=+=+=+=+=+=+=+=+\n\n"
+                
+        output_file = filedialog.asksaveasfilename(defaultextension=".txt", filetypes=[("Text Files", "*.txt"), ("All files", "*.*")])
+        if output_file:
+            with open(output_file, 'w', encoding='utf-8') as f:
+                f.write(contents)
+                    
+                
+
+    def export_verse_notes(self, event): ##################################################
+        #self.dbdata
+        verses = bibledb.get_all_verses_with_notes(self.dbdata)
+        contents = ""
+        for verse in verses:
+            contents += verse['verse'] + '\n'
+            contents += verse['note']
+            contents += "\n\n+=+=+=+=+=+=+=+=+=+=+=+=+=+=+\n\n"
+        output_file = filedialog.asksaveasfilename(defaultextension=".txt", filetypes=[("Text Files", "*.txt"), ("All files", "*.*")])
+        if output_file:
+            with open(output_file, 'w', encoding='utf-8') as f:
+                f.write(contents)
+        
+
     def display_attributes(self, dbstuff = None, canvas_width = None):
         if canvas_width == None:
             canvas_width = self.canvas_width
@@ -646,7 +798,7 @@ class RightHandFrame(ttk.Frame):
         #Clear the canvas
         self.canvas.delete("all")
 
-        #show a header
+        #show a header?
         
 
         if dbstuff != None:
@@ -676,29 +828,81 @@ class RightHandFrame(ttk.Frame):
             # CREATE TAG BUTTON ##---- DONE
             buttonX = x_offset
             # Create all the option buttons
+
+            #Buttons row 1:
+            buttonText = "Export all Tag/Note/Verses"
+            button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
+            self.export_tagversenote_button = self.canvas.create_rectangle(buttonX, y_offset, buttonX + button_width, y_offset + textlineheight + 2*textelbowroom, fill='snow', tags='export_tags_button')
+            self.canvas.create_text(buttonX+textelbowroom, y_offset+textelbowroom, text=buttonText, anchor=tk.NW, font=self.canvasFont, tags = 'export_tags_button')#button text for open db
+            self.canvas.tag_bind('export_tags_button', '<Button-1>', lambda event: self.export_tags_and_synonyms(event))
+            buttonX += x_offset + button_width
+
+            buttonText = "Export all Verse Notes"
+            button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
+            self.export_versenote_button = self.canvas.create_rectangle(buttonX, y_offset, buttonX + button_width, y_offset + textlineheight + 2*textelbowroom, fill='snow', tags='export_verses_button')
+            self.canvas.create_text(buttonX+textelbowroom, y_offset+textelbowroom, text=buttonText, anchor=tk.NW, font=self.canvasFont, tags = 'export_verses_button')#button text for open db
+            self.canvas.tag_bind('export_verses_button', '<Button-1>', lambda event: self.export_verse_notes(event))
+            buttonX += x_offset + button_width
+
+            #new row
+            y_offset += 10 + textlineheight + 2*textelbowroom
+            buttonX = x_offset
+            
+            #Buttons row 2:
             buttonText = "Search Tag"
             button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
             self.create_tag_button_rect = self.canvas.create_rectangle(buttonX, y_offset, buttonX + button_width, y_offset + textlineheight + 2*textelbowroom, fill='azure', tags='create_tag_button')
             self.canvas.create_text(buttonX+textelbowroom, y_offset+textelbowroom, text=buttonText, anchor=tk.NW, font=self.canvasFont, tags = 'create_tag_button')#button text for open db
             self.canvas.tag_bind('create_tag_button', '<Button-1>', lambda event: self.select_tag(event))
             buttonX += x_offset + button_width
+            
+            buttonText = "Select Books"
+            button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
+            self.select_book_rect = self.canvas.create_rectangle(buttonX, y_offset, buttonX + button_width, y_offset + textlineheight + 2*textelbowroom, fill='azure', tags='select_book_button')
+            self.canvas.create_text(buttonX+textelbowroom, y_offset+textelbowroom, text=buttonText, anchor=tk.NW, font=self.canvasFont, tags = 'select_book_button')#button text for open db
+            self.canvas.tag_bind('select_book_button', '<Button-1>', lambda event: self.select_book(event))
+            buttonX += x_offset + button_width
 
             buttonText = "Toggle Set Operation"
             button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
-            self.create_tag_button_rect = self.canvas.create_rectangle(buttonX, y_offset, buttonX + button_width, y_offset + textlineheight + 2*textelbowroom, fill='snow', tags='toggle_union_button')
+            self.create_toggle_union_btn = self.canvas.create_rectangle(buttonX, y_offset, buttonX + button_width, y_offset + textlineheight + 2*textelbowroom, fill='snow', tags='toggle_union_button')
             self.canvas.create_text(buttonX+textelbowroom, y_offset+textelbowroom, text=buttonText, anchor=tk.NW, font=self.canvasFont, tags = 'toggle_union_button')#button text for open db
             self.canvas.tag_bind('toggle_union_button', '<Button-1>', lambda event: self.toggle_union(event))
             buttonX += x_offset + button_width
 
+            #new row
             y_offset += 10 + textlineheight + 2*textelbowroom
+            buttonX = x_offset
+
+            #Buttons row 3:
+            buttonText = "Copy These Verses"
+            button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
+            self.copy_this_verselist_button = self.canvas.create_rectangle(buttonX, y_offset, buttonX + button_width, y_offset + textlineheight + 2*textelbowroom, fill='snow', tags='copy_vlist_button')
+            self.canvas.create_text(buttonX+textelbowroom, y_offset+textelbowroom, text=buttonText, anchor=tk.NW, font=self.canvasFont, tags = 'copy_vlist_button')#button text for open db
+            self.canvas.tag_bind('copy_vlist_button', '<Button-1>', lambda event: self.copy_verse_lists(event))
+            buttonX += x_offset + button_width
+
+            # comments only checkbox -- the filtering feature associated with this is not written yet
+            if self.comments_only:
+                comments_checkbox_fill = "black"
+            else:
+                comments_checkbox_fill = "white"
+
+            self.canvas.create_rectangle(buttonX, y_offset, buttonX+textlineheight, y_offset+textlineheight, outline="black", fill=comments_checkbox_fill)
+            self.checkbox_id = self.canvas.create_rectangle(buttonX+textlineheight/4, y_offset+textlineheight/4, buttonX+(textlineheight*3/4), y_offset+(textlineheight*3/4), fill=comments_checkbox_fill)
+            self.label_id = self.canvas.create_text(buttonX+textlineheight+textelbowroom, y_offset, text="Only show verses with comments", anchor=tk.NW)
+            self.canvas.tag_bind(self.checkbox_id, "<Button-1>", self.toggle_comments_only)
+            self.canvas.tag_bind(self.label_id, "<Button-1>", self.toggle_comments_only)
+
+            #new row...
+            y_offset += 10 + textlineheight + 2*textelbowroom
+            buttonX = x_offset
 
             
 
             # LIST OF TAGS AND VERSES ##---- DONE
             #print("test 1")
             #delete tag button size...
-            xb_width = self.canvasFont.measure(" x ")
-            tagx = 0
             
             checklist = self.tags_list.copy() #in this case, the checklist is all strings, so no tag['tag'] or tag['id']
             synonymlist = [] #the list of tags that will actually be shown
@@ -712,7 +916,16 @@ class RightHandFrame(ttk.Frame):
                     #prepare the verse set for this tag and its synonyms by getting the verses for this tag first.
                     verse_set = set()
                     #print("tag", tag)
-                    vd = bibledb.get_db_stuff(self.dbdata, "verse", "tag", tag)
+                    vd = bibledb.get_db_stuff(self.dbdata, "verse", "tag", tag) #vd now has a list of all the verses as returned by get_db_stuff
+                    vdcopy = vd.copy() #make a copy of verse data so we can parse it safely
+                    #eliminate all verses that aren't in the selected books
+                    if (len(self.selected_books) > 0):
+                        for verse in vdcopy:
+                            if (bibledb.book_proper_names[verse["start_book"]] not in bibledb.book_proper_names) and (bibledb.book_proper_names[verse["end_book"]] not in bibledb.book_proper_names):
+                                vd.remove(verse)
+                        vdcopy = vd.copy() #remake vdcopy for the next filter
+
+
                     #print("vd 1", vd)
                     #convert the verse data to a tuple of numbers to make it hashable for some list functions
                     verse_set.update(((m["start_book"],m["start_chapter"],m["start_verse"],m["end_book"],m["end_chapter"],m["end_verse"]) for m in vd))
@@ -758,8 +971,37 @@ class RightHandFrame(ttk.Frame):
                 #both union and intersection converted verses to a set. Make it a list again.
                 verses = list(verses)
                 
+
+            #SHOW THE BOOK FILTER LIST
+            xb_width = self.canvasFont.measure(" x ")
+            tagx = 0
+            
+            for book in self.selected_books:
+                #print(book)
+                book_width = self.canvasFont.measure(book) + 2*textelbowroom
+                if book_width + xb_width + tagx+1 + x_offset + right_x_offset > panelWidth: #+1 for that thicker line between tags
+                    tagx = 0
+                    y_offset += textlineheight + textlinegap*3
+                #every book gets an x
+                book_delete_binder = "Delete_" + str(book)
+                tagx += 1 #making a thicker line between tag groups
+                self.canvas.create_rectangle(x_offset+tagx, y_offset, x_offset+tagx+xb_width, y_offset+textlineheight+textlinegap*2, fill='coral1', tags=book_delete_binder)
+                self.canvas.create_text(x_offset+tagx, y_offset+textlinegap, text=" X", anchor=tk.NW, font=self.canvasFont, tags=book_delete_binder)
                 
+                tagx += xb_width
+                #clicking the book deletes the book from the list
+                self.canvas.create_rectangle(x_offset+tagx, y_offset, x_offset+tagx+book_width, y_offset+textlineheight+textlinegap*2, fill='azure', tags=book_delete_binder)
+                self.canvas.create_text(x_offset+tagx, y_offset+textlinegap, text=" " + book, anchor=tk.NW, font=self.canvasFont, tags=book_delete_binder)
+                
+                self.canvas.tag_bind(book_delete_binder, '<Button-1>', lambda event, mytag=book: self.delete_book(event, book))
+                tagx += book_width
+
+
+            if len(self.selected_books) > 0:
+                y_offset += textlineheight + textlinegap*3 + 10
+            
             #SHOW THE TAGS LIST
+            tagx = 0
             for tag in checklist:
                 tag_width =  self.canvasFont.measure(tag) + 2*textelbowroom
 
@@ -815,8 +1057,24 @@ class RightHandFrame(ttk.Frame):
                 print("Failed to get the verse references for that tag. This error might occur if your DB was made with a version of the Bible that had different books from the version you're currently using. For example, if the DB was made including the apocrypha, but your current Bible doesn't have it.")
             self.canvas.itemconfigure(versecount_text, text = "total verse count: " +str(len(self.verse_xref_list)))
             tagx = 0
+            self.shown_verses = []
             for xverse in self.verse_xref_list:
-                itemText = combineVRefs(xverse[0],xverse[1])
+                itemText = combineVRefs(xverse[0],xverse[1])#this is the human readable verse reference
+                #Check if we're filtering on verses with comments
+                if self.comments_only and not (len(bibledb.get_db_stuff(self.dbdata, "note", "verse", itemText)) > 0):
+                    continue #if we're filtering and no comment, then skip this iteration in the foor loop.
+                #check if the verse should be book filtered
+                if len(self.selected_books) > 0:
+                    skipverse = True
+                    for book in self.selected_books:
+                        if book in itemText:
+                            skipverse = False
+                            break
+                    if skipverse:
+                        continue
+
+                self.shown_verses.append(itemText + ", ")
+                #draw the button and verse
                 button_width = self.canvasFont.measure(itemText) + 2*textelbowroom
                 if button_width + tagx + x_offset + right_x_offset > panelWidth:
                     tagx = 0
