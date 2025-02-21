@@ -32,6 +32,31 @@ def qualifyBook(book_name):
         
     return None
 
+def normalize_vref(passage):
+    # takes a verse reference in the form (1,1,1,2,2,2) like what we get from the verses db
+    # and returns its normalized string name (Genesis 1:1-Exodus 2:2)
+    vID, bA, cA, vA, bB, cB, vB = (str(n) for n in passage.values())
+    
+    pA = book_proper_names[int(bA)]
+    pB = book_proper_names[int(bB)]
+    if bA != bB: #different book
+        if bA < bB:
+            return(pA+" "+cA + ":" + vA + " - " + pB + " " +cB + ":" + vB)
+        else:
+            return(pB+" "+cB + ":" + vB + " - " + pA + " " +cA + ":" + vA)
+    elif cA != cB: #same book, different chapter
+        if int(cA) < int(cB):
+            return(pA+" "+cA + ":" + vA + "-" + cB + ":" + vB)
+        else:
+            return(pA+" "+cB + ":" + vB + "-" + cA + ":" + vA)
+    elif vA != vB: #same book, same chapter, different verse
+        if int(vA) < int(vB):
+            return(pA+" "+cA + ":" + vA + "-" + vB)
+        else:
+            return(pA+" "+cB + ":" + vB + "-" + vA)
+    else: #same book, same chapter, same verse
+        return (pA + " " + cB + ":" + vB)
+
 def getBookIndex(book):
     book = qualifyBook(book)
     return book_proper_names.index(book) if book in book_proper_names else -1
@@ -684,6 +709,12 @@ def get_db_stuff(database_file, x_type, y_type, y_value):
 
     # Close the connection
     conn.close()
+
+    #returns a list like.....
+    #for verses:
+    #[{'id': 1638, 'start_book': 2, 'start_chapter': 1, 'start_verse': 2, 'end_book': 2, 'end_chapter': 1, 'end_verse': 9}, ...
+    #for tags:
+    #[{'id': 1659, 'tag': 'herd'}, {'id': 440, 'tag': 'heifer'}, ...]
     
     return result
 
@@ -756,6 +787,39 @@ def find_note_tag_chapters(database_file):
         tagged_chapters.append(bc)
 
     return tagged_chapters
+
+def get_all_verses_with_notes(database_file):
+    #returns a list of dictionary entries:
+    # [ {"verse":string_verse_ref, "note", string_note},...]
+
+    if database_file is None:
+        return []
+
+    conn = sqlite3.connect(database_file)
+    cursor = conn.cursor()
+
+    cursor.execute("""
+            SELECT DISTINCT v.id, v.start_book, v.start_chapter, v.start_verse, 
+                            v.end_book, v.end_chapter, v.end_verse
+            FROM verses v
+            JOIN verse_notes vn ON v.id = vn.verse_id
+        """)
+
+    column_names = [description[0] for description in cursor.description]
+    # Fetch all rows
+    rows = cursor.fetchall()
+
+    verses = []
+    for row in rows:
+        row_dict = dict(zip(column_names, row))
+        verses.append(row_dict)
+        
+    #verses = cursor.fetchall()
+    verse_refs = [normalize_vref(v) for v in verses]
+    verses_notes = [{"verse":v,"note":get_db_stuff(database_file, "note","verse",v)[0]['note']} for v in verse_refs]
+    return verses_notes
+
+
 
 def find_note_tag_verses(database_file, book, chapter):
     # for a given book and chapter, get all verse ranges that have tags and/or notes.
