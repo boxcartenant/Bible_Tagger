@@ -522,15 +522,20 @@ def delete_verse_note(database_file, verse):
     cursor = conn.cursor()
     
     # Get verse ID based on the provided verse reference
-    cursor.execute('''
-        SELECT id FROM verses WHERE start_book = ? AND end_book = ? AND start_chapter = ? AND end_chapter = ? AND start_verse = ? AND end_verse = ?
-        ''',(entry["start_book"],entry["end_book"],entry["start_chapter"],entry["end_chapter"],entry["start_verse"],entry["end_verse"]))
-    verse_id = cursor.fetchone()[0]
-    #print("verse id:",verse_id)
-    
-    cursor.execute('SELECT note_id FROM verse_notes WHERE verse_id = ?', (verse_id,))
-    note_id = cursor.fetchone()[0]
-    #print("note id:",note_id)
+    try:
+        cursor.execute('''
+            SELECT id FROM verses WHERE start_book = ? AND end_book = ? AND start_chapter = ? AND end_chapter = ? AND start_verse = ? AND end_verse = ?
+            ''',(entry["start_book"],entry["end_book"],entry["start_chapter"],entry["end_chapter"],entry["start_verse"],entry["end_verse"]))
+        verse_id = cursor.fetchone()[0]
+        #print("verse id:",verse_id)
+        
+        cursor.execute('SELECT note_id FROM verse_notes WHERE verse_id = ?', (verse_id,))
+        note_id = cursor.fetchone()[0]
+        #print("note id:",note_id)
+    except Exception as e:
+        print("Can't delete note:",e)
+        conn.close()
+        return
 
     # Check if the verse exists
     if verse_id and note_id:
