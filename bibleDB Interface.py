@@ -1106,7 +1106,10 @@ class OptionsPanel:
         if no_verse:
             # item = "verseClick" if a verse was clicked
             # data = {"verse": the verse text, "ref": the verse reference}
-            self.display_attributes(item = "verseClick", data={"verse":"", "ref": "Deuteronomy 4:2"})
+            try:
+                self.display_attributes(item = "verseClick", data={"verse":"", "ref": "Deuteronomy 4:2"})
+            except:
+                pass
         else:
             self.display_attributes()
         self.cause_canvas_to_refresh()
