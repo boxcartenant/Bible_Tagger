@@ -750,11 +750,13 @@ class RightHandFrame(ttk.Frame):
         exportdata = get_verses_for_taglist(tagslist)
         contents = ""
         for item in exportdata:
+            contents += '\n  //////TAGS://////\n'
             for tag in item['tags']:
                 contents += tag + ", "
-            contents += '\n//////new note...\n'
+            contents += '\n  //////NOTES://////\n'
             for note in item['notes']:
                 contents += note + '\n\n'
+            contents += '\n  //////VERSES://////\n'
             for verse in item['verses']:
                 contents += verse + ', '
             contents += "\n\n+=+=+=+=+=+=+=+=+=+=+=+=+=+=+\n\n"
