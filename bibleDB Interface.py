@@ -1183,8 +1183,10 @@ if __name__ == "__main__":
         
         if jsonpath and bdbpath:
             print("found config file. Loading:\n",jsonpath,"\n",bdbpath)
-            load_json(jsonpath)
-            load_bdb(bdbpath)
+            if os.path.exists(jsonpath):
+                load_json(jsonpath)
+            if os.path.exists(bdbpath):
+                load_bdb(bdbpath)
 
     search_and_load()
     #main_window = MainWindow(root, data_model)
