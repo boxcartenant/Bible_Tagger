@@ -441,7 +441,7 @@ class CanvasView:
                 self.selected_end_b = bibledb_Lib.book_proper_names[bb]
                 eb = bb
             if sb == eb:
-                if cc > self.selected_start_c:
+                if int(cc) > int(self.selected_start_c):
                     #print("new chapter is greater than old chapter")
                     self.selected_end_c = cc
                     self.selected_end_v = vv
