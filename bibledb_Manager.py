@@ -6,6 +6,7 @@ from tkinter import simpledialog
 from tkinter.font import Font
 from openpyxl import Workbook
 from tkinter import filedialog
+import os
 
 def combineVRefs(vref1, vref2):
     #get the verse reference and store in self.current_data['ref']
@@ -766,8 +767,6 @@ class RightHandFrame(ttk.Frame):
             with open(output_file, 'w', encoding='utf-8') as f:
                 f.write(contents)
                     
-                
-
     def export_verse_notes(self, event): ##################################################
         #self.dbdata
         verses = bibledb.get_all_verses_with_notes(self.dbdata)
@@ -781,6 +780,148 @@ class RightHandFrame(ttk.Frame):
             with open(output_file, 'w', encoding='utf-8') as f:
                 f.write(contents)
         
+    def export_tag_networks(self, event):
+        folder = "tag networks"
+        os.makedirs(folder, exist_ok=True)
+        tagslist = self.left_frame.all_tags_list
+        def get_verses_for_taglist(tags):
+            result = []
+            for synonym_group in tags:
+                verses = []
+                for tag in synonym_group:
+                    checkverses = bibledb.get_db_stuff(self.dbdata, "verse", "tag", tag)
+                    for verse in checkverses:
+                        if verse not in verses:
+                            verses.append(verse)
+                verses.sort(key=lambda r: (r['start_book'], r['start_chapter'], r['start_verse']))
+                verse_refs = [bibledb.normalize_vref(q) for q in verses]
+                result.append({"tags":synonym_group, "verses":verse_refs})
+            return result
+        exportdata = get_verses_for_taglist(tagslist)
+        for item in exportdata:
+            primary_tag = item['tags'][0].replace("/", "_").replace("\\", "_")
+            filename = os.path.join(folder, primary_tag + ".txt")
+            cooccurring_tags = set()
+            for vref in item['verses']:
+                tags_on_verse = [t['tag'] for t in bibledb.get_db_stuff(self.dbdata, "tag", "verse", vref)]
+                cooccurring_tags.update(tags_on_verse)
+            contents = ", ".join(sorted(cooccurring_tags)) + "\n"
+            contents += "----------\n"
+            for vref in item['verses']:
+                tags_on_verse = [t['tag'] for t in bibledb.get_db_stuff(self.dbdata, "tag", "verse", vref)]
+                contents += vref + "\n"
+                contents += ", ".join(tags_on_verse) + "\n\n"
+            with open(filename, 'w', encoding='utf-8') as f:
+                f.write(contents)
+        tk.messagebox.showinfo("Information", "Exported files to folder, 'tag networks'!")
+
+    def export_subtopic_breakdowns(self, event):
+        folder = "subtopic breakdowns"
+        os.makedirs(folder, exist_ok=True)
+        tagslist = self.left_frame.all_tags_list
+        for synonym_group in tagslist:
+            verses = []
+            for tag in synonym_group:
+                checkverses = bibledb.get_db_stuff(self.dbdata, "verse", "tag", tag)
+                for verse in checkverses:
+                    if verse not in verses:
+                        verses.append(verse)
+            verses.sort(key=lambda r: (r['start_book'], r['start_chapter'], r['start_verse']))
+            verse_refs = [bibledb.normalize_vref(q) for q in verses]
+            verse_objs = verses
+            verse_dict = dict(zip(verse_refs, verse_objs))
+            verse_tags = {}
+            for vref in verse_refs:
+                tags = [t['tag'] for t in bibledb.get_db_stuff(self.dbdata, "tag", "verse", vref)]
+                verse_tags[vref] = set(tags)
+            co_tags = set()
+            for tags in verse_tags.values():
+                co_tags.update(tags)
+            checklist = list(co_tags)
+            sub_syngroups = []
+            synonymlist = []
+            checkedlist = []
+            synonyms = []
+            for tag in checklist:
+                if tag not in checkedlist:
+                    checkedlist.append(tag)
+                    synonymlist.append(tag)
+                    synonyms = [b['tag'] for b in bibledb.get_db_stuff(self.dbdata,"tag","tag",tag)]
+                    while len(synonyms) > 0:
+                        synonym = synonyms.pop()
+                        if synonym not in checkedlist:
+                            checkedlist.append(synonym)
+                            synonymlist.append(synonym)
+                            synonyms += [b['tag'] for b in bibledb.get_db_stuff(self.dbdata,"tag","tag",synonym)]
+                    sub_syngroups.append(synonymlist)
+                    synonymlist = []
+            t_set = set(synonym_group)
+            sub_syngroups = [sg for sg in sub_syngroups if set(sg) != t_set]
+            sub_data = []
+            for sub_sg in sub_syngroups:
+                s_set = set(sub_sg)
+                sub_verses = [v for v, vtags in verse_tags.items() if s_set & vtags]
+                sub_data.append((len(sub_verses), sub_sg, sub_verses))
+            sub_data.sort(key=lambda x: x[0], reverse=True)
+            for _, _, sv in sub_data:
+                sv.sort(key=lambda vr: (verse_dict[vr]['start_book'], verse_dict[vr]['start_chapter'], verse_dict[vr]['start_verse'], verse_dict[vr]['end_book'], verse_dict[vr]['end_chapter'], verse_dict[vr]['end_verse']))
+            primary_tag = synonym_group[0].replace("/", "_").replace("\\", "_")
+            filename = os.path.join(folder, primary_tag + ".txt")
+            contents = ""
+            for count, sg, sverses in sub_data:
+                if count > 0:
+                    contents += f"///// SUBTOPIC ({count} verses): " + ", ".join(sg) + "\n"
+                    contents += ", ".join(sverses) + "\n\n"
+            with open(filename, 'w', encoding='utf-8') as f:
+                f.write(contents)
+        tk.messagebox.showinfo("Information", "Exported files to folder, 'subtopic breakdowns'!")
+
+
+    def export_single_topics(self, event):
+        def get_verses_for_taglist(tags):
+            result = []
+            for synonym_group in tags:
+                verses = []
+                notes = []
+                for tag in synonym_group:
+                    this_note = bibledb.get_db_stuff(self.dbdata, "note", "tag", tag)
+                    if this_note:
+                        this_note = this_note[0]['note']
+                        notes.append(this_note)
+                    checkverses = bibledb.get_db_stuff(self.dbdata, "verse", "tag", tag)
+                    for verse in checkverses:
+                        if verse not in verses:
+                            verses.append(verse)
+                verses.sort(key=lambda r: (r['start_book'], r['start_chapter'], r['start_verse']))
+                verses = [bibledb.normalize_vref(q) for q in verses]
+                result.append({"tags":synonym_group,"notes":notes, "verses":verses})
+            return result
+        
+        folder = "single topic exports"
+        os.makedirs(folder, exist_ok=True)
+        tagslist = self.left_frame.all_tags_list
+        exportdata = get_verses_for_taglist(tagslist)
+        for item in exportdata:
+            primary_tag = item['tags'][0].replace("/", "_").replace("\\", "_")
+            filename = os.path.join(folder, primary_tag + ".txt")
+            contents = ""
+            contents += '\n  //////TAGS://////\n'
+            contents += ', '.join(item['tags']) + '\n'
+            contents += '  //////NOTES://////\n'
+            contents += '\n\n'.join(item['notes']) + '\n\n'
+            contents += '  //////VERSES://////\n'
+            contents += ', '.join(item['verses']) + '\n\n'
+            contents += "+=+=+=+=+=+=+=+=+=+=+=+=+=+=+\n\n"
+            contents += '  //////VERSE NOTES://////\n'
+            for verse in item['verses']:
+                vnotes = bibledb.get_db_stuff(self.dbdata, "note", "verse", verse)
+                if vnotes:
+                    contents += verse + '\n'
+                    contents += vnotes[0]['note'] + '\n\n'
+            with open(filename, 'w', encoding='utf-8') as f:
+                f.write(contents)
+        tk.messagebox.showinfo("Information", "Exported files to folder, 'single topic exports'!")
+
 
     def display_attributes(self, dbstuff = None, canvas_width = None):
         if canvas_width == None:
@@ -831,7 +972,7 @@ class RightHandFrame(ttk.Frame):
             buttonX = x_offset
             # Create all the option buttons
 
-            #Buttons row 1:
+        #Export Buttons
             buttonText = "Export all Tag/Note/Verses"
             button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
             self.export_tagversenote_button = self.canvas.create_rectangle(buttonX, y_offset, buttonX + button_width, y_offset + textlineheight + 2*textelbowroom, fill='snow', tags='export_tags_button')
@@ -849,8 +990,37 @@ class RightHandFrame(ttk.Frame):
             #new row
             y_offset += 10 + textlineheight + 2*textelbowroom
             buttonX = x_offset
+
+            buttonText = "Export Single Topics"
+            button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
+            self.export_single_button = self.canvas.create_rectangle(buttonX, y_offset, buttonX + button_width, y_offset + textlineheight + 2*textelbowroom, fill='snow', tags='export_single_button')
+            self.canvas.create_text(buttonX+textelbowroom, y_offset+textelbowroom, text=buttonText, anchor=tk.NW, font=self.canvasFont, tags = 'export_single_button')#button text for open db
+            self.canvas.tag_bind('export_single_button', '<Button-1>', lambda event: self.export_single_topics(event))
+            buttonX += x_offset + button_width
+
+            buttonText = "Export Tag Networks"
+            button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
+            self.export_tagnet_button = self.canvas.create_rectangle(buttonX, y_offset, buttonX + button_width, y_offset + textlineheight + 2*textelbowroom, fill='snow', tags='export_tagnet_button')
+            self.canvas.create_text(buttonX+textelbowroom, y_offset+textelbowroom, text=buttonText, anchor=tk.NW, font=self.canvasFont, tags = 'export_tagnet_button')
+            self.canvas.tag_bind('export_tagnet_button', '<Button-1>', lambda event: self.export_tag_networks(event))
+            buttonX += x_offset + button_width
+
+            #new row
+            y_offset += 10 + textlineheight + 2*textelbowroom
+            buttonX = x_offset
+
+            buttonText = "Export Subtopic Breakdowns"
+            button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
+            self.export_subtopic_button = self.canvas.create_rectangle(buttonX, y_offset, buttonX + button_width, y_offset + textlineheight + 2*textelbowroom, fill='snow', tags='export_subtopic_button')
+            self.canvas.create_text(buttonX+textelbowroom, y_offset+textelbowroom, text=buttonText, anchor=tk.NW, font=self.canvasFont, tags = 'export_subtopic_button')
+            self.canvas.tag_bind('export_subtopic_button', '<Button-1>', lambda event: self.export_subtopic_breakdowns(event))
+            buttonX += x_offset + button_width
+
+            #new row
+            y_offset += 10 + textlineheight + 2*textelbowroom
+            buttonX = x_offset
             
-            #Buttons row 2:
+        #Tag Sorting Buttons:
             buttonText = "Search Tag"
             button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
             self.create_tag_button_rect = self.canvas.create_rectangle(buttonX, y_offset, buttonX + button_width, y_offset + textlineheight + 2*textelbowroom, fill='azure', tags='create_tag_button')
@@ -876,7 +1046,7 @@ class RightHandFrame(ttk.Frame):
             y_offset += 10 + textlineheight + 2*textelbowroom
             buttonX = x_offset
 
-            #Buttons row 3:
+        #Additional Toolset:
             buttonText = "Copy These Verses"
             button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
             self.copy_this_verselist_button = self.canvas.create_rectangle(buttonX, y_offset, buttonX + button_width, y_offset + textlineheight + 2*textelbowroom, fill='snow', tags='copy_vlist_button')
