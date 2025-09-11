@@ -179,7 +179,8 @@ class NavigationTree:
         self.dbManager_callback = dbManager_callback
         self.marked_chapters = []
 
-        self.secondary_window = None
+        self.secondary_master = self.master
+        self.secondary_window = SecondaryWindow(self.secondary_master, self.dbManager_callback, open_db_file)
         
         # Create a frame for the button and tree
         self.tree_frame = ttk.Frame(self.paned_window)
@@ -313,19 +314,9 @@ class NavigationTree:
             else:
                 print("Invalid file! It's gotta be a json file. Funny thing about this: you could use this program to make notes about any kind of JSON data which is organized in a way similar to a supported Bible JSON file.")
         else:#subsequent clicks, open the db manager
-            if self.secondary_window is None or not self.secondary_window.winfo_exists():
+            #if self.secondary_window is None or not self.secondary_window.winfo_exists():
                 # Create the secondary window if it doesn't exist or has been destroyed
-
-                self.secondary_window_instance = SecondaryWindow(self.secondary_window, self.dbManager_callback, open_db_file)
-
-                # Add widgets and configure the secondary window as needed
-                # (You can add more widgets or configure the window here)
-            #else:
-                # Toggle the visibility of the secondary window
-                #if self.secondary_window.state() == 'normal':
-                    #self.secondary_window.withdraw()  # Hide the window
-                #else:
-                    #self.secondary_window.deiconify()  # Show the window
+            self.secondary_window.show(self.dbManager_callback, open_db_file);
 
 class CanvasView:
     def __init__(self, master, paned_window, canvas_callback):
