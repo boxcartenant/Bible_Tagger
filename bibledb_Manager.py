@@ -1,12 +1,14 @@
 import tkinter as tk
-from tkinter import ttk
-from tkinter import Misc
+from tkinter import ttk, messagebox, font, filedialog, simpledialog, Misc, StringVar, OptionMenu
 import bibledb_Lib as bibledb
-from tkinter import simpledialog
 from tkinter.font import Font
 from openpyxl import Workbook
-from tkinter import filedialog
-import os
+import os, itertools, time, math, csv
+from collections import defaultdict, deque, Counter
+import numpy as np
+import networkx as nx
+import numpy as np
+import matplotlib.pyplot as plt
 
 def combineVRefs(vref1, vref2):
     #get the verse reference and store in self.current_data['ref']
@@ -204,6 +206,7 @@ class SecondaryWindow:
         self.master = master
         self.callback = callback #used for clicking a tag and setting it as the current tag in the main window
         self.dbdata = dbdata #info about the currend db that's open
+        self.top_window = None
         
         #Handy variables here...
         self.canvasFont = Font(size = 10)
@@ -217,13 +220,29 @@ class SecondaryWindow:
         self.export_tags_path = "./"
         self.all_tags_list = [] # this variable contains the tags sorted by usage. It is used by right_hand_frame to export tag/note/verses 
 
+    def show(self, callback = None, dbdata = None):
+        self.callback = callback #used for clicking a tag and setting it as the current tag in the main window
+        self.dbdata = dbdata #info about the currend db that's open
+        if self.top_window and self.top_window.winfo_exists():
+            self.top_window.lift()
+            return
         # Set up the secondary window
-        self.top_window = tk.Toplevel(master)
+        self.top_window = tk.Toplevel(self.master)
         self.top_window.title("DB Info")
         self.top_window.geometry("800x500")
         self.reload_id = None
         self.reload_id2 = None
 
+        def on_close():
+            self.top_window.destroy()
+            self.top_window = None
+        self.top_window.protocol("WM_DELETE_WINDOW", on_close)
+
+        self.populate()
+        
+
+
+    def populate(self):
         #I am accustomed to dealing with paned windows
         self.this_window = ttk.PanedWindow(self.top_window, orient="horizontal")
         self.this_window.pack(fill="both", expand=True)
@@ -251,7 +270,7 @@ class SecondaryWindow:
         self.this_window.add(self.myFrame)
 
         #add another frame to the right-hand side of the window. We're using two columns now, baby!
-        self.rightFrame = RightHandFrame(self.master, self.this_window, self.callback, self.dbdata, self)
+        self.rightFrame = RightHandFrame(self.master, self.top_window, self.this_window, self.callback, self.dbdata, self)
         self.rightFrame.grid(row=0, column=1, sticky="nsew")
         self.this_window.add(self.rightFrame)
 
@@ -271,7 +290,7 @@ class SecondaryWindow:
         self.this_window.bind("<Configure>", self.window_resize)
 
         #go ahead and display contents
-        self.display_attributes()
+        self.top_window.after(50, self.display_attributes)
 
         self.active_panel = None
         self.top_window.bind("<MouseWheel>", self.scroll_active_panel)
@@ -362,7 +381,29 @@ class SecondaryWindow:
             self.export_tags_this_time = True
         self.display_attributes()
 
+    def show_loading_overlay(self, text="Loading…"):
+        """Create or raise a loading overlay on the canvas."""
+        cx = self.canvas.winfo_width() // 2
+        cy = self.canvas.winfo_height() // 2
+        if not hasattr(self, 'loading_text_id') or self.loading_text_id is None:
+            self.loading_text_id = self.canvas.create_text(
+                cx, cy, text=text, anchor=tk.CENTER,
+                font=self.boldFont, fill="gray", tags="loading_overlay"
+            )
+        else:
+            self.canvas.itemconfigure(self.loading_text_id, text=text)
+            self.canvas.coords(self.loading_text_id, cx, cy)
+            self.canvas.tag_raise(self.loading_text_id)
+        self.canvas.update_idletasks()  # force it to draw immediately
+
+    def hide_loading_overlay(self):
+        if hasattr(self, 'loading_text_id') and self.loading_text_id:
+            self.canvas.delete(self.loading_text_id)
+            self.loading_text_id = None
+
+
     def display_attributes(self, dbstuff = None):
+        self.show_loading_overlay("Loading…")
         #shows all the tags
         x_offset = 5
         y_offset = 3
@@ -594,13 +635,16 @@ class SecondaryWindow:
             workbook.save(self.export_tags_path)
             print("Exported tags to: " + str(self.export_tags_path))
             self.export_tags_path = None
+        self.hide_loading_overlay()
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+        
 
 ###########################################Right Hand Frame is the verse sorting area. Probably not a useful name for it, now that I think about it.
 
 class RightHandFrame(ttk.Frame):
-    def __init__(self, master, parent, callback = None, dbdata = None, left_frame = None, *args, **kwargs):
+    def __init__(self, master, parent_window, parent, callback = None, dbdata = None, left_frame = None, *args, **kwargs):
         super().__init__(parent, *args, **kwargs)
+        self.parent_window = parent_window
         self.canvasFont = Font(size = 10)
         self.italicFont = Font(size = 10, slant = 'italic')
         self.boldFont = Font(size = 10, weight = 'bold')
@@ -781,7 +825,13 @@ class RightHandFrame(ttk.Frame):
                 f.write(contents)
         
     def export_tag_networks(self, event):
-        folder = "tag networks"
+        out_dir = filedialog.askdirectory(title="Select folder for tag network output")
+        if not out_dir:
+            return
+        messagebox.showinfo("Information", "This will take a long time. Press OK and then wait for another popup.")
+        self.parent_window.lift()
+        subfolder_name = "tag networks"
+        folder = os.path.join(out_dir, subfolder_name)
         os.makedirs(folder, exist_ok=True)
         tagslist = self.left_frame.all_tags_list
         def get_verses_for_taglist(tags):
@@ -813,10 +863,17 @@ class RightHandFrame(ttk.Frame):
                 contents += ", ".join(tags_on_verse) + "\n\n"
             with open(filename, 'w', encoding='utf-8') as f:
                 f.write(contents)
-        tk.messagebox.showinfo("Information", "Exported files to folder, 'tag networks'!")
+        messagebox.showinfo("Information", f"Exported files to folder, '{folder}'!")
+        self.parent_window.lift()
 
     def export_subtopic_breakdowns(self, event):
-        folder = "subtopic breakdowns"
+        out_dir = filedialog.askdirectory(title="Select folder for subtopic breakdowns")
+        if not out_dir:
+            return
+        messagebox.showinfo("Information", "This will take a long time. Press OK and then wait for another popup.")
+        self.parent_window.lift()
+        subfolder_name = "subtopic breakdowns"
+        folder = os.path.join(out_dir, subfolder_name)
         os.makedirs(folder, exist_ok=True)
         tagslist = self.left_frame.all_tags_list
         for synonym_group in tagslist:
@@ -874,10 +931,241 @@ class RightHandFrame(ttk.Frame):
                     contents += ", ".join(sverses) + "\n\n"
             with open(filename, 'w', encoding='utf-8') as f:
                 f.write(contents)
-        tk.messagebox.showinfo("Information", "Exported files to folder, 'subtopic breakdowns'!")
+
+            # Generate heatmap for overlaps (limit to top 20 subtopics)
+            if len(sub_data) > 0:
+                sub_data = sub_data[:]  # Limit for visualization
+                sub_sets = [set(sverses) for _, _, sverses in sub_data]
+                n = len(sub_sets)
+                if n > 1:  # Need at least 2 for meaningful overlaps
+                    overlap = np.zeros((n, n))
+                    for i in range(n):
+                        for j in range(n):
+                            inter = len(sub_sets[i] & sub_sets[j])
+                            union = len(sub_sets[i] | sub_sets[j])
+                            jacc = inter / union if union else 0
+                            overlap[i, j] = jacc
+                    fig, ax = plt.subplots(figsize=(10, 8))
+                    im = ax.imshow(overlap, cmap='viridis')
+                    ax.set_xticks(range(n))
+                    ax.set_yticks(range(n))
+                    labels = [sg[0] for _, sg, _ in sub_data]  # Use first tag as label
+                    ax.set_xticklabels(labels, rotation=45, ha='right')
+                    ax.set_yticklabels(labels)
+                    plt.colorbar(im, label='Jaccard Similarity')
+                    plt.title(f"Subtopic Overlap Heatmap for {primary_tag}")
+                    plt.tight_layout()
+                    plt.savefig(os.path.join(folder, primary_tag + "_overlap_heatmap.png"))
+                    plt.close()
+        messagebox.showinfo("Information", f"Exported files to folder, '{folder}'!")
+        self.parent_window.lift()
+
+    def analyze_subtopic_tags(self, event, tags=None, verses=None):
+        """
+        Analyze what *synonym groups* occur within a given list of verses or tags.
+        Clicking a bar or its label shows verses AND copies them to clipboard.
+        """
+
+        # ---------------
+        # 1. Build the verse set
+        # ---------------
+        verse_refs = set()
+
+        if verses is not None and len(verses) > 0:
+            for vtuple in verses:
+                vref = bibledb.normalize_vref({
+                    "ID": None,
+                    "start_book": vtuple[0],
+                    "start_chapter": vtuple[1],
+                    "start_verse": vtuple[2],
+                    "end_book": vtuple[3],
+                    "end_chapter": vtuple[4],
+                    "end_verse": vtuple[5]
+                })
+                verse_refs.add(vref)
+        elif tags is not None and len(tags) > 0:
+            # union of verses from these tags + synonyms
+            for t in tags:
+                stack = [t]
+                seen_tags = set()
+                while stack:
+                    tg = stack.pop()
+                    if tg in seen_tags:
+                        continue
+                    seen_tags.add(tg)
+                    for row in bibledb.get_db_stuff(self.dbdata, "verse", "tag", tg):
+                        vref = bibledb.normalize_vref(row)
+                        verse_refs.add(vref)
+                    # synonyms
+                    syns = [b['tag'] for b in bibledb.get_db_stuff(self.dbdata, "tag", "tag", tg)]
+                    for s in syns:
+                        if s not in seen_tags:
+                            stack.append(s)
+        else:
+            messagebox.showinfo("No Data", "No verses or tags to analyze.")
+            self.parent_window.lift()
+            return
+
+        if not verse_refs:
+            messagebox.showinfo("No Data", "No verses found for these tags.")
+            self.parent_window.lift()
+            return
+
+        # ---------------
+        # 2. Build synonym groups among all tags found in these verses
+        # ---------------
+        # First collect all tags from these verses
+        all_tags_in_verses = set()
+        verse_to_tags = defaultdict(set)
+        for vref in verse_refs:
+            rows = bibledb.get_db_stuff(self.dbdata, "tag", "verse", vref)
+            for r in rows:
+                t = r['tag']
+                verse_to_tags[vref].add(t)
+                all_tags_in_verses.add(t)
+
+        # Build synonym groups: connected components of tag↔tag synonyms restricted to our tags
+        visited = set()
+        syn_groups = []
+        for t in all_tags_in_verses:
+            if t in visited:
+                continue
+            stack = [t]
+            comp = set()
+            while stack:
+                tg = stack.pop()
+                if tg in visited:
+                    continue
+                visited.add(tg)
+                comp.add(tg)
+                syns = [b['tag'] for b in bibledb.get_db_stuff(self.dbdata, "tag", "tag", tg)]
+                for s in syns:
+                    if s in all_tags_in_verses and s not in visited:
+                        stack.append(s)
+            syn_groups.append(comp)
+
+        # Remove the input tags themselves from groups if you don’t want to count them
+        #input_tag_set = set(tags) if tags else set()
+        #filtered_groups = []
+        #for g in syn_groups:
+        #    if g & input_tag_set and len(g - input_tag_set) == 0:
+        #        # group is only the input tags themselves
+        #        continue
+        #    filtered_groups.append(g)
+        #syn_groups = filtered_groups
+
+        if not syn_groups:
+            messagebox.showinfo("No Data", "No other tag groups found in these verses.")
+            self.parent_window.lift()
+            return
+
+        # For each synonym group, find verses where ANY tag in the group occurs
+        group_to_verses = []
+        for g in syn_groups:
+            vs = {vref for vref, tagsset in verse_to_tags.items() if tagsset & g}
+            group_to_verses.append((g, vs))
+
+        # Sort groups by count of verses
+        group_to_verses.sort(key=lambda x: len(x[1]), reverse=True)
+
+        # Build display labels
+        group_labels = []
+        for g, vs in group_to_verses:
+            first_tag = sorted(g)[0]
+            label = f"{first_tag} (+{len(g)-1} synonyms)" if len(g) > 1 else first_tag
+            group_labels.append(label)
+
+        # ---------------
+        # 3. Build UI with clickable bars & labels
+        # ---------------
+        vis_window = tk.Toplevel(self.master)
+        vis_window.title("Tag-Synonym Groups in Selected Verses")
+        vis_window.geometry("900x600")
+
+        canvas_frame = ttk.Frame(vis_window)
+        canvas_frame.pack(fill="both", expand=True)
+        canvas = tk.Canvas(canvas_frame)
+        canvas.grid(row=0, column=0, sticky="nsew")
+        v_scrollbar = tk.Scrollbar(canvas_frame, orient="vertical", command=canvas.yview)
+        v_scrollbar.grid(row=0, column=1, sticky="ns")
+        h_scrollbar = tk.Scrollbar(canvas_frame, orient="horizontal", command=canvas.xview)
+        h_scrollbar.grid(row=1, column=0, sticky="ew")
+        canvas.configure(yscrollcommand=v_scrollbar.set, xscrollcommand=h_scrollbar.set)
+        canvas_frame.grid_rowconfigure(0, weight=1)
+        canvas_frame.grid_columnconfigure(0, weight=1)
+
+        canvas_font = Font(size=10)
+        textlineheight = canvas_font.metrics()["linespace"]
+        x_offset = 10
+        y_offset = 10
+
+        canvas.create_text(x_offset, y_offset, text="Tag-Synonym Groups in Selected Verses", anchor=tk.NW, font=canvas_font)
+        y_offset += textlineheight + 12
+
+        max_val = len(group_to_verses[0][1])
+        bar_area_width = 600
+        bar_height = 18
+        label_col_width = 300
+
+        # ---------------
+        # 4. Click handler to show and copy verses
+        # ---------------
+        def show_and_copy_verses(verses, label_text):
+            # Put verses on clipboard
+            result = ", ".join(verses)
+            root = tk._default_root
+            if root:
+                root.clipboard_clear()
+                root.clipboard_append(result)
+                root.update()
+            # Show message
+            if len(verses) > 200:
+                sample = ", ".join(verses[:200])
+                messagebox.showinfo(f"Verses for {label_text}",
+                                    f"{len(verses)} verses (first 200 shown):\n{sample}\n(All verses copied to clipboard.)")
+                vis_window.lift()
+            else:
+                messagebox.showinfo(f"Verses for {label_text}", ", ".join(verses))
+                vis_window.lift()
+
+        for i, ((group, vs), label) in enumerate(zip(group_to_verses, group_labels)):
+            val = len(vs)
+            lab_y = y_offset + i * (bar_height + 6)
+
+            # Label text
+            ttag = f"lab_{i}"
+            canvas.create_text(x_offset, lab_y, text=label, anchor=tk.NW, font=canvas_font, tags=ttag)
+
+            # Bar rectangle
+            bar_x = x_offset + label_col_width
+            bar_len = (val / max_val) * bar_area_width if max_val > 0 else 0
+            btag = f"bar_{i}"
+            canvas.create_rectangle(bar_x, lab_y, bar_x + bar_len, lab_y + bar_height,
+                                   fill='skyblue', outline='black', tags=btag)
+            canvas.create_text(bar_x + bar_len + 6, lab_y + bar_height / 2,
+                              text=str(val), anchor=tk.W, font=canvas_font)
+
+            # Bind both label and bar to the click handler
+            verses_sorted = sorted(vs)
+            canvas.tag_bind(ttag, "<Button-1>", lambda e, v=verses_sorted, l=label: show_and_copy_verses(v, l))
+            canvas.tag_bind(btag, "<Button-1>", lambda e, v=verses_sorted, l=label: show_and_copy_verses(v, l))
+
+        total_height = y_offset + len(group_to_verses) * (bar_height + 6) + 50
+        total_width = x_offset + label_col_width + bar_area_width + 200
+        canvas.configure(scrollregion=(0, 0, total_width, total_height))
+
+        messagebox.showinfo("Done", "Click a group name or bar to view its verses.\n(All verses also copied to clipboard.)")
+        self.parent_window.lift()
+        vis_window.lift()
+
 
 
     def export_single_topics(self, event):
+        out_dir = filedialog.askdirectory(title="Select folder for tag single topic output")
+        if not out_dir:
+            return
+        messagebox.showinfo("Information", "This will take a long time. Press OK and then wait for another popup.")
+        self.parent_window.lift()
         def get_verses_for_taglist(tags):
             result = []
             for synonym_group in tags:
@@ -897,7 +1185,8 @@ class RightHandFrame(ttk.Frame):
                 result.append({"tags":synonym_group,"notes":notes, "verses":verses})
             return result
         
-        folder = "single topic exports"
+        subfolder_name = "single topics"
+        folder = os.path.join(out_dir, subfolder_name)
         os.makedirs(folder, exist_ok=True)
         tagslist = self.left_frame.all_tags_list
         exportdata = get_verses_for_taglist(tagslist)
@@ -920,7 +1209,145 @@ class RightHandFrame(ttk.Frame):
                     contents += vnotes[0]['note'] + '\n\n'
             with open(filename, 'w', encoding='utf-8') as f:
                 f.write(contents)
-        tk.messagebox.showinfo("Information", "Exported files to folder, 'single topic exports'!")
+        messagebox.showinfo("Information", f"Exported files to folder, '{folder}'!")
+        self.parent_window.lift()
+
+    def export_pairwise_overlaps(self, event):
+        """
+        Compute pairwise overlaps between all tags in the DB and export:
+          - CSV with counts of overlaps between each pair of tags
+          - GEXF network file (for Gephi)
+        """
+        import tkinter as tk
+        from tkinter import ttk, messagebox, filedialog
+        import os, time, csv
+        from collections import defaultdict
+        import numpy as np
+        import networkx as nx
+
+        # ----------------------------
+        # UI: progress window
+        # ----------------------------
+        progress_window = tk.Toplevel(self.master)
+        progress_window.title("Computing Pairwise Overlaps")
+        progress_window.geometry("350x110")
+        progress_label = tk.Label(progress_window, text="Preparing...")
+        progress_label.pack(pady=8)
+        progress_bar = ttk.Progressbar(progress_window, orient="horizontal", length=300, mode="determinate")
+        progress_bar.pack(pady=6)
+        progress_window.update_idletasks()
+
+        # ----------------------------
+        # Step 1: Load all tags and verses once
+        # ----------------------------
+        progress_label.config(text="Loading all tags and verses...")
+        progress_bar['value'] = 5
+        progress_window.update_idletasks()
+
+        # Build tag→verse mapping
+        tag_to_verses = defaultdict(set)
+        all_tags = [r['tag'] for r in bibledb.get_tag_list(self.dbdata)]
+        all_tags = sorted(set(all_tags))
+        for t in all_tags:
+            verses = bibledb.get_db_stuff(self.dbdata, "verse", "tag", t)
+            for v in verses:
+                vref = bibledb.normalize_vref(v)
+                tag_to_verses[t].add(vref)
+
+        # remove empty tags
+        all_tags = [t for t in all_tags if tag_to_verses[t]]
+
+        n_tags = len(all_tags)
+        if n_tags < 2:
+            messagebox.showinfo("No Data", "Not enough tags with verses to compute overlaps.")
+            progress_window.destroy()
+            return
+
+        # Choose output folder
+        out_dir = filedialog.askdirectory(title="Select folder for overlap output")
+        if not out_dir:
+            progress_window.destroy()
+            return
+
+        messagebox.showinfo("Information", "This will take a while. Press OK and then wait for another popup.")
+        self.parent_window.lift()
+        progress_window.lift()
+        
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        subfolder_name = "pairwise overlaps"
+        folder = os.path.join(out_dir, subfolder_name)
+        os.makedirs(folder, exist_ok=True)
+        csv_file = os.path.join(folder, f"pairwise_overlaps_{timestamp}.csv")
+        gexf_file = os.path.join(folder, f"tag_network_{timestamp}.gexf")
+
+        # ----------------------------
+        # Step 2: Compute pairwise overlaps
+        # ----------------------------
+        progress_label.config(text="Computing overlaps...")
+        progress_bar['value'] = 10
+        progress_window.update_idletasks()
+
+        overlaps = np.zeros((n_tags, n_tags), dtype=np.int32)
+
+        for i in range(n_tags):
+            set_i = tag_to_verses[all_tags[i]]
+            for j in range(i + 1, n_tags):
+                set_j = tag_to_verses[all_tags[j]]
+                count = len(set_i & set_j)
+                overlaps[i, j] = overlaps[j, i] = count
+            if (i + 1) % 10 == 0:
+                progress_bar['value'] = 10 + 80 * (i / n_tags)
+                progress_label.config(text=f"Processed {i+1}/{n_tags} tags...")
+                progress_window.update_idletasks()
+
+        # ----------------------------
+        # Step 3: Export CSV
+        # ----------------------------
+        progress_label.config(text="Writing CSV file...")
+        progress_bar['value'] = 95
+        progress_window.update_idletasks()
+
+        with open(csv_file, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(["Tag1", "Tag2", "OverlapCount"])
+            for i in range(n_tags):
+                for j in range(i + 1, n_tags):
+                    c = overlaps[i, j]
+                    if c > 0:
+                        writer.writerow([all_tags[i], all_tags[j], c])
+
+        # ----------------------------
+        # Step 4: Export network file (GEXF)
+        # ----------------------------
+        progress_label.config(text="Building network graph...")
+        progress_window.update_idletasks()
+
+        G = nx.Graph()
+        for t in all_tags:
+            G.add_node(t)
+        for i in range(n_tags):
+            for j in range(i + 1, n_tags):
+                c = overlaps[i, j]
+                if c > 0:
+                    # Edge weight = number of overlapping verses
+                    G.add_edge(all_tags[i], all_tags[j], weight=int(c))
+
+        nx.write_gexf(G, gexf_file)
+
+        # ----------------------------
+        # Done
+        # ----------------------------
+        progress_bar['value'] = 100
+        progress_label.config(text="Done.")
+        progress_window.update_idletasks()
+        time.sleep(0.3)
+        progress_window.destroy()
+
+        messagebox.showinfo("All done!",
+                            f"Pairwise overlaps saved to:\n{csv_file}\n\n"
+                            f"Network file saved to:\n{gexf_file}\n\n"
+                            "You can open the .gexf file in Gephi for interactive exploration.")
+        self.parent_window.lift()
 
 
     def display_attributes(self, dbstuff = None, canvas_width = None):
@@ -966,54 +1393,75 @@ class RightHandFrame(ttk.Frame):
             elif self.symmetric_difference:
                 title_text = "=== SYMMETRIC DIFFERENCE: Showing verses unique to only one of the selected tags ==="
             self.canvas.create_text(x_offset, y_offset, text=title_text, anchor=tk.W, font=self.boldFont)
-            y_offset += boldlineheight + textlinegap + 10
-
-            # CREATE TAG BUTTON ##---- DONE
+            y_offset += boldlineheight + textlinegap
+            
             buttonX = x_offset
-            # Create all the option buttons
+            
+            # ====== Export Dropdown ======
+            # Use a tkinter OptionMenu or ttk.Combobox for export options
 
-        #Export Buttons
-            buttonText = "Export all Tag/Note/Verses"
-            button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
-            self.export_tagversenote_button = self.canvas.create_rectangle(buttonX, y_offset, buttonX + button_width, y_offset + textlineheight + 2*textelbowroom, fill='snow', tags='export_tags_button')
-            self.canvas.create_text(buttonX+textelbowroom, y_offset+textelbowroom, text=buttonText, anchor=tk.NW, font=self.canvasFont, tags = 'export_tags_button')#button text for open db
-            self.canvas.tag_bind('export_tags_button', '<Button-1>', lambda event: self.export_tags_and_synonyms(event))
-            buttonX += x_offset + button_width
+            export_options = [
+                "Export All Tag/Note/Verses",
+                "Export All Verse Notes",
+                "Export Single Topic Files",
+                "Export Tag Networks",
+                "Export Subtopic Breakdowns",
+                "Export Pairwise Overlaps"
+            ]
+            self.selected_export_option = StringVar()
+            self.selected_export_option.set(export_options[0])  # default
 
-            buttonText = "Export all Verse Notes"
-            button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
-            self.export_versenote_button = self.canvas.create_rectangle(buttonX, y_offset, buttonX + button_width, y_offset + textlineheight + 2*textelbowroom, fill='snow', tags='export_verses_button')
-            self.canvas.create_text(buttonX+textelbowroom, y_offset+textelbowroom, text=buttonText, anchor=tk.NW, font=self.canvasFont, tags = 'export_verses_button')#button text for open db
-            self.canvas.tag_bind('export_verses_button', '<Button-1>', lambda event: self.export_verse_notes(event))
-            buttonX += x_offset + button_width
+            # We create an actual widget over the canvas for dropdown (simplest)
+            self.export_dropdown = tk.OptionMenu(self.master, self.selected_export_option, *export_options)
+            self.canvas.create_window(buttonX, y_offset, anchor=tk.NW, window=self.export_dropdown)
+            buttonX += 200  # width of dropdown
 
+            # "Go" button
+            def run_selected_export():
+                opt = self.selected_export_option.get()
+                if opt == "Export All Tag/Note/Verses":
+                    self.export_tags_and_synonyms(None)
+                elif opt == "Export All Verse Notes":
+                    self.export_verse_notes(None)
+                elif opt == "Export Single Topic Files":
+                    self.export_single_topics(None)
+                elif opt == "Export Tag Networks":
+                    self.export_tag_networks(None)
+                elif opt == "Export Subtopic Breakdowns":
+                    self.export_subtopic_breakdowns(None)
+                elif opt == "Export Pairwise Overlaps":
+                    self.export_pairwise_overlaps(None)
+
+            go_button = tk.Button(self.master, text="Go", command=run_selected_export)
+            self.canvas.create_window(buttonX, y_offset, anchor=tk.NW, window=go_button)
+            buttonX += 50
+            
             #new row
-            y_offset += 10 + textlineheight + 2*textelbowroom
+            y_offset += textlineheight + 2*textelbowroom
             buttonX = x_offset
 
-            buttonText = "Export Single Topics"
+        # ====== MAIN BUTTON ROW (toggle / copy / analyze) ======
+            
+            # Toggle Set Operation
+            buttonText = "Toggle Set Operation"
             button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
-            self.export_single_button = self.canvas.create_rectangle(buttonX, y_offset, buttonX + button_width, y_offset + textlineheight + 2*textelbowroom, fill='snow', tags='export_single_button')
-            self.canvas.create_text(buttonX+textelbowroom, y_offset+textelbowroom, text=buttonText, anchor=tk.NW, font=self.canvasFont, tags = 'export_single_button')#button text for open db
-            self.canvas.tag_bind('export_single_button', '<Button-1>', lambda event: self.export_single_topics(event))
+            self.create_toggle_union_btn = self.canvas.create_rectangle(buttonX, y_offset,
+                buttonX + button_width, y_offset + textlineheight + 2*textelbowroom,
+                fill='snow', tags='toggle_union_button')
+            self.canvas.create_text(buttonX+textelbowroom, y_offset+textelbowroom,
+                text=buttonText, anchor=tk.NW, font=self.canvasFont, tags='toggle_union_button')
+            self.canvas.tag_bind('toggle_union_button', '<Button-1>', lambda event: self.toggle_union(event))
             buttonX += x_offset + button_width
 
-            buttonText = "Export Tag Networks"
+            # Copy These Verses
+            buttonText = "Copy These Verses"
             button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
-            self.export_tagnet_button = self.canvas.create_rectangle(buttonX, y_offset, buttonX + button_width, y_offset + textlineheight + 2*textelbowroom, fill='snow', tags='export_tagnet_button')
-            self.canvas.create_text(buttonX+textelbowroom, y_offset+textelbowroom, text=buttonText, anchor=tk.NW, font=self.canvasFont, tags = 'export_tagnet_button')
-            self.canvas.tag_bind('export_tagnet_button', '<Button-1>', lambda event: self.export_tag_networks(event))
-            buttonX += x_offset + button_width
-
-            #new row
-            y_offset += 10 + textlineheight + 2*textelbowroom
-            buttonX = x_offset
-
-            buttonText = "Export Subtopic Breakdowns"
-            button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
-            self.export_subtopic_button = self.canvas.create_rectangle(buttonX, y_offset, buttonX + button_width, y_offset + textlineheight + 2*textelbowroom, fill='snow', tags='export_subtopic_button')
-            self.canvas.create_text(buttonX+textelbowroom, y_offset+textelbowroom, text=buttonText, anchor=tk.NW, font=self.canvasFont, tags = 'export_subtopic_button')
-            self.canvas.tag_bind('export_subtopic_button', '<Button-1>', lambda event: self.export_subtopic_breakdowns(event))
+            self.copy_this_verselist_button = self.canvas.create_rectangle(buttonX, y_offset,
+                buttonX + button_width, y_offset + textlineheight + 2*textelbowroom,
+                fill='snow', tags='copy_vlist_button')
+            self.canvas.create_text(buttonX+textelbowroom, y_offset+textelbowroom,
+                text=buttonText, anchor=tk.NW, font=self.canvasFont, tags='copy_vlist_button')
+            self.canvas.tag_bind('copy_vlist_button', '<Button-1>', lambda event: self.copy_verse_lists(event))
             buttonX += x_offset + button_width
 
             #new row
@@ -1035,24 +1483,20 @@ class RightHandFrame(ttk.Frame):
             self.canvas.tag_bind('select_book_button', '<Button-1>', lambda event: self.select_book(event))
             buttonX += x_offset + button_width
 
-            buttonText = "Toggle Set Operation"
+            # Analyze Subtopic Tags (new)
+            buttonText = "Analyze Subtopics"
             button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
-            self.create_toggle_union_btn = self.canvas.create_rectangle(buttonX, y_offset, buttonX + button_width, y_offset + textlineheight + 2*textelbowroom, fill='snow', tags='toggle_union_button')
-            self.canvas.create_text(buttonX+textelbowroom, y_offset+textelbowroom, text=buttonText, anchor=tk.NW, font=self.canvasFont, tags = 'toggle_union_button')#button text for open db
-            self.canvas.tag_bind('toggle_union_button', '<Button-1>', lambda event: self.toggle_union(event))
+            self.analyze_subtopic_button = self.canvas.create_rectangle(buttonX, y_offset,
+                buttonX + button_width, y_offset + textlineheight + 2*textelbowroom,
+                fill='snow', tags='analyze_subtopic_button')
+            self.canvas.create_text(buttonX+textelbowroom, y_offset+textelbowroom,
+                text=buttonText, anchor=tk.NW, font=self.canvasFont, tags='analyze_subtopic_button')
+            # Bind later once verses are generated
             buttonX += x_offset + button_width
-
+            
             #new row
             y_offset += 10 + textlineheight + 2*textelbowroom
             buttonX = x_offset
-
-        #Additional Toolset:
-            buttonText = "Copy These Verses"
-            button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
-            self.copy_this_verselist_button = self.canvas.create_rectangle(buttonX, y_offset, buttonX + button_width, y_offset + textlineheight + 2*textelbowroom, fill='snow', tags='copy_vlist_button')
-            self.canvas.create_text(buttonX+textelbowroom, y_offset+textelbowroom, text=buttonText, anchor=tk.NW, font=self.canvasFont, tags = 'copy_vlist_button')#button text for open db
-            self.canvas.tag_bind('copy_vlist_button', '<Button-1>', lambda event: self.copy_verse_lists(event))
-            buttonX += x_offset + button_width
 
             # comments only checkbox -- the filtering feature associated with this is not written yet
             if self.comments_only:
@@ -1142,6 +1586,23 @@ class RightHandFrame(ttk.Frame):
                 
                 #both union and intersection converted verses to a set. Make it a list again.
                 verses = list(verses)
+
+            if self.intersection:
+                #Let's go ahead and bind the analysis button with our verse listing
+                self.canvas.tag_bind(
+                    'analyze_subtopic_button', 
+                    '<Button-1>',
+                    lambda event: self.analyze_subtopic_tags(event, tags=self.tags_list, verses=verses)
+                )
+            else:
+                def sortmode_complain():
+                    messagebox.showinfo("Sort Mode", "This feature only works with set operation: intersection")
+                    self.parent_window.lift()
+                self.canvas.tag_bind(
+                    'analyze_subtopic_button', 
+                    '<Button-1>',
+                    lambda event: sortmode_complain()
+                )
                 
 
             #SHOW THE BOOK FILTER LIST
