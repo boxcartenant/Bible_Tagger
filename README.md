@@ -4,11 +4,16 @@ It's written in Python with TKinter, with a 3-column interface:
 - The left column is a tree for navigating books and chapters.
 - The middle column shows the text for one chapter, with vertical lines to show what verses have been annotated or tagged. You can click a verse (or shift-click to select multiple verses).
 - The right column shows the selected verse(s), any notes you've written about that verse range, and a list of tags associated with the verse.
+- There's also a popup you can open with a small variety of analysis tools for the tag/verse db
 
 The columns are resizable (there's an invisible "sash" between each column that you can drag left and right).
 
+The main window
 ![image info](Screenshots/Screenshot5.png)
-![image info](Screenshots/Screenshot7.png)
+The DB Analysis window
+![image info](Screenshots/Screenshot8.png)
+Contents of the dropdown list for analysis exports
+![image info](Screenshots/Screenshot9.png)
 
 I programmed this around the output of SWORD-to-JSON. Here's the link to that: https://github.com/wasdin/SWORD-to-JSON . A copy of it (which I had to modify to make it work for me) is included in here. 
 
