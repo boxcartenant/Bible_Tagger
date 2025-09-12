@@ -8,11 +8,16 @@ It's written in Python with TKinter, with a 3-column interface:
 
 The columns are resizable (there's an invisible "sash" between each column that you can drag left and right).
 
-The main window
+= The Main window =
+
 ![image info](Screenshots/Screenshot5.png)
-The DB Analysis window
+
+= The DB Analysis window =
+
 ![image info](Screenshots/Screenshot8.png)
-Contents of the dropdown list for analysis exports
+
+= Contents of the dropdown list for analysis exports =
+
 ![image info](Screenshots/Screenshot9.png)
 
 I programmed this around the output of SWORD-to-JSON. Here's the link to that: https://github.com/wasdin/SWORD-to-JSON . A copy of it (which I had to modify to make it work for me) is included in here. 
