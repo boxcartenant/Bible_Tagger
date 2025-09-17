@@ -1349,6 +1349,153 @@ class RightHandFrame(ttk.Frame):
                             "You can open the .gexf file in Gephi for interactive exploration.")
         self.parent_window.lift()
 
+    def export_tag_verse_matrix(self, tags=None, verses=None):
+        """
+        Export a spreadsheet with synonym-group columns and verse rows
+        marking which verses belong to which tag-groups.
+        """
+
+        # Ask user for base folder
+        xlsx_file = filedialog.asksaveasfilename(defaultextension=".xlsx", filetypes=[("Excel Files", "*.xlsx"), ("All files", "*.*")])
+        #out_dir = filedialog.askdirectory(title="Select folder for Tag–Verse matrix export")
+        if not xlsx_file:
+            return
+        self.parent_window.lift()
+
+        #import datetime
+        #timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        #subfolder_name = f"tag_verse_matrix_{timestamp}"
+        #folder = os.path.join(out_dir, subfolder_name)
+        #os.makedirs(folder, exist_ok=True)
+
+        # -----------------
+        # 1. Build verse_refs from input tags/verses
+        # -----------------
+        verse_refs = set()
+
+        if verses is not None and len(verses) > 0:
+            for vtuple in verses:
+                vref = bibledb.normalize_vref({
+                    "ID": None,
+                    "start_book": vtuple[0],
+                    "start_chapter": vtuple[1],
+                    "start_verse": vtuple[2],
+                    "end_book": vtuple[3],
+                    "end_chapter": vtuple[4],
+                    "end_verse": vtuple[5]
+                })
+                verse_refs.add(vref)
+        elif tags is not None and len(tags) > 0:
+            for t in tags:
+                stack = [t]
+                seen_tags = set()
+                while stack:
+                    tg = stack.pop()
+                    if tg in seen_tags:
+                        continue
+                    seen_tags.add(tg)
+                    for row in bibledb.get_db_stuff(self.dbdata, "verse", "tag", tg):
+                        vref = bibledb.normalize_vref(row)
+                        verse_refs.add(vref)
+                    syns = [b['tag'] for b in bibledb.get_db_stuff(self.dbdata, "tag", "tag", tg)]
+                    for s in syns:
+                        if s not in seen_tags:
+                            stack.append(s)
+        else:
+            messagebox.showinfo("No Data", "No verses or tags to analyze.")
+            self.parent_window.lift()
+            return
+
+        if not verse_refs:
+            messagebox.showinfo("No Data", "No verses found for these tags.")
+            self.parent_window.lift()
+            return
+
+        # -----------------
+        # 2. Build verse_to_tags + collect all tags present
+        # -----------------
+        all_tags_in_verses = set()
+        verse_to_tags = defaultdict(set)
+        for vref in verse_refs:
+            rows = bibledb.get_db_stuff(self.dbdata, "tag", "verse", vref)
+            for r in rows:
+                t = r['tag']
+                verse_to_tags[vref].add(t)
+                all_tags_in_verses.add(t)
+
+        # -----------------
+        # 3. Build synonym groups
+        # -----------------
+        visited = set()
+        syn_groups = []
+        for t in all_tags_in_verses:
+            if t in visited:
+                continue
+            stack = [t]
+            comp = set()
+            while stack:
+                tg = stack.pop()
+                if tg in visited:
+                    continue
+                visited.add(tg)
+                comp.add(tg)
+                syns = [b['tag'] for b in bibledb.get_db_stuff(self.dbdata, "tag", "tag", tg)]
+                for s in syns:
+                    if s in all_tags_in_verses and s not in visited:
+                        stack.append(s)
+            syn_groups.append(comp)
+
+        if not syn_groups:
+            messagebox.showinfo("No Data", "No tag groups found in these verses.")
+            return
+
+        # For each synonym group, find verses where ANY tag in the group occurs
+        group_to_verses = []
+        for g in syn_groups:
+            vs = {vref for vref, tagsset in verse_to_tags.items() if tagsset & g}
+            group_to_verses.append((g, vs))
+
+        # Sort groups by count of verses
+        group_to_verses.sort(key=lambda x: len(x[1]), reverse=True)
+
+        # Build display labels
+        group_labels = []
+        for g, vs in group_to_verses:
+            first_tag = sorted(g)[0]
+            label = f"{first_tag} (+{len(g)-1} syns)" if len(g) > 1 else first_tag
+            group_labels.append(label)
+
+        # -----------------
+        # 4. Build the spreadsheet
+        # -----------------
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Tag–Verse Matrix"
+
+        # Header row: Verse + each tag-group
+        ws.cell(row=1, column=1, value="Verse")
+        for col_idx, label in enumerate(group_labels, start=2):
+            ws.cell(row=1, column=col_idx, value=label)
+
+        # Data rows
+        verse_list_sorted = sorted(list(verse_refs))
+        for row_idx, vref in enumerate(verse_list_sorted, start=2):
+            ws.cell(row=row_idx, column=1, value=vref)
+            for col_idx, (group, vs) in enumerate(group_to_verses, start=2):
+                val = 1 if vref in vs else 0
+                ws.cell(row=row_idx, column=col_idx, value=val)
+
+        # Save
+        #xlsx_file = os.path.join(folder, f"tag_verse_matrix_{timestamp}.xlsx")
+        wb.save(xlsx_file)
+
+        messagebox.showinfo(
+            "Export Complete",
+            f"Tag–Verse matrix exported to:\n{xlsx_file}"
+        )
+        self.parent_window.lift()
+
+
 
     def display_attributes(self, dbstuff = None, canvas_width = None):
         if canvas_width == None:
@@ -1380,143 +1527,8 @@ class RightHandFrame(ttk.Frame):
         if self.dbdata is None:
             self.canvas.create_text(x_offset, y_offset, text="Go select a verse and load a db first.", fill="green", font = self.canvasFont)
         else:
-            #some statistical data...
-            showtext = "total verse count: " +str(len(self.verse_xref_list))
-            versecount_text = self.canvas.create_text(x_offset+textelbowroom, y_offset+textelbowroom, text=showtext, anchor=tk.NW, font=self.canvasFont)
-            y_offset += textlineheight + textlinegap*2 + textelbowroom*2
-            
-            # HEADER ##---- DONE
-            if self.union:
-                title_text = "=== UNION: Showing all verses for selected tags ==="
-            elif self.intersection:
-                title_text = "=== INTERSECTION: Showing verses shared by all selected tags ==="
-            elif self.symmetric_difference:
-                title_text = "=== SYMMETRIC DIFFERENCE: Showing verses unique to only one of the selected tags ==="
-            self.canvas.create_text(x_offset, y_offset, text=title_text, anchor=tk.W, font=self.boldFont)
-            y_offset += boldlineheight + textlinegap
-            
-            buttonX = x_offset
-            
-            # ====== Export Dropdown ======
-            # Use a tkinter OptionMenu or ttk.Combobox for export options
 
-            export_options = [
-                "Export All Tag/Note/Verses",
-                "Export All Verse Notes",
-                "Export Single Topic Files",
-                "Export Tag Networks",
-                "Export Subtopic Breakdowns",
-                "Export Pairwise Overlaps"
-            ]
-            self.selected_export_option = StringVar()
-            self.selected_export_option.set(export_options[0])  # default
-
-            # We create an actual widget over the canvas for dropdown (simplest)
-            self.export_dropdown = tk.OptionMenu(self.master, self.selected_export_option, *export_options)
-            self.canvas.create_window(buttonX, y_offset, anchor=tk.NW, window=self.export_dropdown)
-            buttonX += 200  # width of dropdown
-
-            # "Go" button
-            def run_selected_export():
-                opt = self.selected_export_option.get()
-                if opt == "Export All Tag/Note/Verses":
-                    self.export_tags_and_synonyms(None)
-                elif opt == "Export All Verse Notes":
-                    self.export_verse_notes(None)
-                elif opt == "Export Single Topic Files":
-                    self.export_single_topics(None)
-                elif opt == "Export Tag Networks":
-                    self.export_tag_networks(None)
-                elif opt == "Export Subtopic Breakdowns":
-                    self.export_subtopic_breakdowns(None)
-                elif opt == "Export Pairwise Overlaps":
-                    self.export_pairwise_overlaps(None)
-
-            go_button = tk.Button(self.master, text="Go", command=run_selected_export)
-            self.canvas.create_window(buttonX, y_offset, anchor=tk.NW, window=go_button)
-            buttonX += 50
-            
-            #new row
-            y_offset += textlineheight + 2*textelbowroom
-            buttonX = x_offset
-
-        # ====== MAIN BUTTON ROW (toggle / copy / analyze) ======
-            
-            # Toggle Set Operation
-            buttonText = "Toggle Set Operation"
-            button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
-            self.create_toggle_union_btn = self.canvas.create_rectangle(buttonX, y_offset,
-                buttonX + button_width, y_offset + textlineheight + 2*textelbowroom,
-                fill='snow', tags='toggle_union_button')
-            self.canvas.create_text(buttonX+textelbowroom, y_offset+textelbowroom,
-                text=buttonText, anchor=tk.NW, font=self.canvasFont, tags='toggle_union_button')
-            self.canvas.tag_bind('toggle_union_button', '<Button-1>', lambda event: self.toggle_union(event))
-            buttonX += x_offset + button_width
-
-            # Copy These Verses
-            buttonText = "Copy These Verses"
-            button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
-            self.copy_this_verselist_button = self.canvas.create_rectangle(buttonX, y_offset,
-                buttonX + button_width, y_offset + textlineheight + 2*textelbowroom,
-                fill='snow', tags='copy_vlist_button')
-            self.canvas.create_text(buttonX+textelbowroom, y_offset+textelbowroom,
-                text=buttonText, anchor=tk.NW, font=self.canvasFont, tags='copy_vlist_button')
-            self.canvas.tag_bind('copy_vlist_button', '<Button-1>', lambda event: self.copy_verse_lists(event))
-            buttonX += x_offset + button_width
-
-            #new row
-            y_offset += 10 + textlineheight + 2*textelbowroom
-            buttonX = x_offset
-            
-        #Tag Sorting Buttons:
-            buttonText = "Search Tag"
-            button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
-            self.create_tag_button_rect = self.canvas.create_rectangle(buttonX, y_offset, buttonX + button_width, y_offset + textlineheight + 2*textelbowroom, fill='azure', tags='create_tag_button')
-            self.canvas.create_text(buttonX+textelbowroom, y_offset+textelbowroom, text=buttonText, anchor=tk.NW, font=self.canvasFont, tags = 'create_tag_button')#button text for open db
-            self.canvas.tag_bind('create_tag_button', '<Button-1>', lambda event: self.select_tag(event))
-            buttonX += x_offset + button_width
-            
-            buttonText = "Select Books"
-            button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
-            self.select_book_rect = self.canvas.create_rectangle(buttonX, y_offset, buttonX + button_width, y_offset + textlineheight + 2*textelbowroom, fill='azure', tags='select_book_button')
-            self.canvas.create_text(buttonX+textelbowroom, y_offset+textelbowroom, text=buttonText, anchor=tk.NW, font=self.canvasFont, tags = 'select_book_button')#button text for open db
-            self.canvas.tag_bind('select_book_button', '<Button-1>', lambda event: self.select_book(event))
-            buttonX += x_offset + button_width
-
-            # Analyze Subtopic Tags (new)
-            buttonText = "Analyze Subtopics"
-            button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
-            self.analyze_subtopic_button = self.canvas.create_rectangle(buttonX, y_offset,
-                buttonX + button_width, y_offset + textlineheight + 2*textelbowroom,
-                fill='snow', tags='analyze_subtopic_button')
-            self.canvas.create_text(buttonX+textelbowroom, y_offset+textelbowroom,
-                text=buttonText, anchor=tk.NW, font=self.canvasFont, tags='analyze_subtopic_button')
-            # Bind later once verses are generated
-            buttonX += x_offset + button_width
-            
-            #new row
-            y_offset += 10 + textlineheight + 2*textelbowroom
-            buttonX = x_offset
-
-            # comments only checkbox -- the filtering feature associated with this is not written yet
-            if self.comments_only:
-                comments_checkbox_fill = "black"
-            else:
-                comments_checkbox_fill = "white"
-
-            self.canvas.create_rectangle(buttonX, y_offset, buttonX+textlineheight, y_offset+textlineheight, outline="black", fill=comments_checkbox_fill)
-            self.checkbox_id = self.canvas.create_rectangle(buttonX+textlineheight/4, y_offset+textlineheight/4, buttonX+(textlineheight*3/4), y_offset+(textlineheight*3/4), fill=comments_checkbox_fill)
-            self.label_id = self.canvas.create_text(buttonX+textlineheight+textelbowroom, y_offset, text="Only show verses with comments", anchor=tk.NW)
-            self.canvas.tag_bind(self.checkbox_id, "<Button-1>", self.toggle_comments_only)
-            self.canvas.tag_bind(self.label_id, "<Button-1>", self.toggle_comments_only)
-
-            #new row...
-            y_offset += 10 + textlineheight + 2*textelbowroom
-            buttonX = x_offset
-
-            
-
-            # LIST OF TAGS AND VERSES ##---- DONE
+            # PREP LIST OF TAGS AND VERSES ##---- DONE
             #print("test 1")
             #delete tag button size...
             
@@ -1586,7 +1598,121 @@ class RightHandFrame(ttk.Frame):
                 
                 #both union and intersection converted verses to a set. Make it a list again.
                 verses = list(verses)
+            
+            #some statistical data...
+            showtext = "total verse count: " +str(len(self.verse_xref_list))
+            versecount_text = self.canvas.create_text(x_offset+textelbowroom, y_offset+textelbowroom, text=showtext, anchor=tk.NW, font=self.canvasFont)
+            y_offset += textlineheight + textlinegap*2 + textelbowroom*2
+            
+            # HEADER ##---- DONE
+            if self.union:
+                title_text = "=== UNION: Showing all verses for selected tags ==="
+            elif self.intersection:
+                title_text = "=== INTERSECTION: Showing verses shared by all selected tags ==="
+            elif self.symmetric_difference:
+                title_text = "=== SYMMETRIC DIFFERENCE: Showing verses unique to only one of the selected tags ==="
+            self.canvas.create_text(x_offset, y_offset, text=title_text, anchor=tk.W, font=self.boldFont)
+            y_offset += boldlineheight + textlinegap
+            
+            buttonX = x_offset
+            
+            # ====== Export Dropdown ======
+            # Use a tkinter OptionMenu or ttk.Combobox for export options
 
+            export_options = [
+                "Export All Tag/Note/Verses",
+                "Export All Verse Notes",
+                "Export Single Topic Files",
+                "Export Tag Networks",
+                "Export Subtopic Breakdowns",
+                "Export Pairwise Overlaps",
+                "Export Tag Verse Matrix"
+            ]
+            self.selected_export_option = StringVar()
+            self.selected_export_option.set(export_options[0])  # default
+
+            # We create an actual widget over the canvas for dropdown (simplest)
+            self.export_dropdown = tk.OptionMenu(self.master, self.selected_export_option, *export_options)
+            self.canvas.create_window(buttonX, y_offset, anchor=tk.NW, window=self.export_dropdown)
+            buttonX += 200  # width of dropdown
+
+            # "Go" button
+            def run_selected_export():
+                opt = self.selected_export_option.get()
+                if opt == "Export All Tag/Note/Verses":
+                    self.export_tags_and_synonyms(None)
+                elif opt == "Export All Verse Notes":
+                    self.export_verse_notes(None)
+                elif opt == "Export Single Topic Files":
+                    self.export_single_topics(None)
+                elif opt == "Export Tag Networks":
+                    self.export_tag_networks(None)
+                elif opt == "Export Subtopic Breakdowns":
+                    self.export_subtopic_breakdowns(None)
+                elif opt == "Export Pairwise Overlaps":
+                    self.export_pairwise_overlaps(None)
+                elif opt == "Export Tag Verse Matrix":
+                    self.export_tag_verse_matrix(tags=self.tags_list, verses=verses)
+
+            go_button = tk.Button(self.master, text="Go", command=run_selected_export)
+            self.canvas.create_window(buttonX, y_offset, anchor=tk.NW, window=go_button)
+            buttonX += 50
+            
+            #new row
+            y_offset += textlineheight + 2*textelbowroom
+            buttonX = x_offset
+
+        # ====== MAIN BUTTON ROW (toggle / copy / analyze) ======
+            
+            # Toggle Set Operation
+            buttonText = "Toggle Set Operation"
+            button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
+            self.create_toggle_union_btn = self.canvas.create_rectangle(buttonX, y_offset,
+                buttonX + button_width, y_offset + textlineheight + 2*textelbowroom,
+                fill='snow', tags='toggle_union_button')
+            self.canvas.create_text(buttonX+textelbowroom, y_offset+textelbowroom,
+                text=buttonText, anchor=tk.NW, font=self.canvasFont, tags='toggle_union_button')
+            self.canvas.tag_bind('toggle_union_button', '<Button-1>', lambda event: self.toggle_union(event))
+            buttonX += x_offset + button_width
+
+            # Copy These Verses
+            buttonText = "Copy These Verses"
+            button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
+            self.copy_this_verselist_button = self.canvas.create_rectangle(buttonX, y_offset,
+                buttonX + button_width, y_offset + textlineheight + 2*textelbowroom,
+                fill='snow', tags='copy_vlist_button')
+            self.canvas.create_text(buttonX+textelbowroom, y_offset+textelbowroom,
+                text=buttonText, anchor=tk.NW, font=self.canvasFont, tags='copy_vlist_button')
+            self.canvas.tag_bind('copy_vlist_button', '<Button-1>', lambda event: self.copy_verse_lists(event))
+            buttonX += x_offset + button_width
+
+            #new row
+            y_offset += 10 + textlineheight + 2*textelbowroom
+            buttonX = x_offset
+            
+        #Tag Sorting Buttons:
+            buttonText = "Search Tag"
+            button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
+            self.create_tag_button_rect = self.canvas.create_rectangle(buttonX, y_offset, buttonX + button_width, y_offset + textlineheight + 2*textelbowroom, fill='azure', tags='create_tag_button')
+            self.canvas.create_text(buttonX+textelbowroom, y_offset+textelbowroom, text=buttonText, anchor=tk.NW, font=self.canvasFont, tags = 'create_tag_button')#button text for open db
+            self.canvas.tag_bind('create_tag_button', '<Button-1>', lambda event: self.select_tag(event))
+            buttonX += x_offset + button_width
+            
+            buttonText = "Select Books"
+            button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
+            self.select_book_rect = self.canvas.create_rectangle(buttonX, y_offset, buttonX + button_width, y_offset + textlineheight + 2*textelbowroom, fill='azure', tags='select_book_button')
+            self.canvas.create_text(buttonX+textelbowroom, y_offset+textelbowroom, text=buttonText, anchor=tk.NW, font=self.canvasFont, tags = 'select_book_button')#button text for open db
+            self.canvas.tag_bind('select_book_button', '<Button-1>', lambda event: self.select_book(event))
+            buttonX += x_offset + button_width
+
+            # Analyze Subtopic Tags (new)
+            buttonText = "Analyze Subtopics"
+            button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
+            self.analyze_subtopic_button = self.canvas.create_rectangle(buttonX, y_offset,
+                buttonX + button_width, y_offset + textlineheight + 2*textelbowroom,
+                fill='snow', tags='analyze_subtopic_button')
+            self.canvas.create_text(buttonX+textelbowroom, y_offset+textelbowroom,
+                text=buttonText, anchor=tk.NW, font=self.canvasFont, tags='analyze_subtopic_button')
             if self.intersection:
                 #Let's go ahead and bind the analysis button with our verse listing
                 self.canvas.tag_bind(
@@ -1603,6 +1729,27 @@ class RightHandFrame(ttk.Frame):
                     '<Button-1>',
                     lambda event: sortmode_complain()
                 )
+            buttonX += x_offset + button_width
+            
+            #new row
+            y_offset += 10 + textlineheight + 2*textelbowroom
+            buttonX = x_offset
+
+            # comments only checkbox -- the filtering feature associated with this is not written yet
+            if self.comments_only:
+                comments_checkbox_fill = "black"
+            else:
+                comments_checkbox_fill = "white"
+
+            self.canvas.create_rectangle(buttonX, y_offset, buttonX+textlineheight, y_offset+textlineheight, outline="black", fill=comments_checkbox_fill)
+            self.checkbox_id = self.canvas.create_rectangle(buttonX+textlineheight/4, y_offset+textlineheight/4, buttonX+(textlineheight*3/4), y_offset+(textlineheight*3/4), fill=comments_checkbox_fill)
+            self.label_id = self.canvas.create_text(buttonX+textlineheight+textelbowroom, y_offset, text="Only show verses with comments", anchor=tk.NW)
+            self.canvas.tag_bind(self.checkbox_id, "<Button-1>", self.toggle_comments_only)
+            self.canvas.tag_bind(self.label_id, "<Button-1>", self.toggle_comments_only)
+
+            #new row...
+            y_offset += 10 + textlineheight + 2*textelbowroom
+            buttonX = x_offset
                 
 
             #SHOW THE BOOK FILTER LIST
