@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, messagebox, font, filedialog, simpledialog, Misc, StringVar, OptionMenu
-import bibledb_Lib as bibledb
+import bibledb_lib as bdblib
 from tkinter.font import Font
 from openpyxl import Workbook
 import os, itertools, time, math, csv
@@ -40,7 +40,7 @@ def combineVRefs(vref1, vref2):
         print("vref2 =", vref2)
         return vref1
     if bA != bB: #different book
-        if bibledb.book_proper_names.index(bA) < bibledb.book_proper_names.index(bB):
+        if bdblib.book_proper_names.index(bA) < bdblib.book_proper_names.index(bB):
             return(bA+" "+cA + ":" + vA + " - " + bB + " " +cB + ":" + vB)
         else:
             return(bB+" "+cB + ":" + vB + " - " + bA + " " +cA + ":" + vA)
@@ -84,7 +84,7 @@ def color_gradient(length, min_length, max_length, type_selection):
 
 class TagInputDialog(simpledialog.Dialog):
     #inherits simpledialog to make a tag input dialog with a dropdown suggestion list
-    def __init__(self, parent, dbdata, topselection = False, get_tags_like=bibledb.get_tags_like, thistitle="Add Tag", bookinputdialog=False):
+    def __init__(self, parent, dbdata, topselection = False, get_tags_like=bdblib.get_tags_like, thistitle="Add Tag", bookinputdialog=False):
         #if topselection is false, entering a new tagname will return the new tagname
         #if topselection is true, entering a new tagname will return the top item in the list box
         #get_tags_like is a callback to whatever function you intend to use to find similar tags. (maybe unnecessary for this to be an argument)
@@ -428,7 +428,7 @@ class DBManager:
             self.canvas.create_text(10, 30, text="Select a verse to load a DB.", fill="green", font = self.canvasFont)
         else:
             #get all the tags
-            checklist = [b['tag'] for b in bibledb.get_tag_list(self.dbdata)] #all the tags
+            checklist = [b['tag'] for b in bdblib.get_tag_list(self.dbdata)] #all the tags
             
             syngroups = []   #each indice is a list of synonymous tags
             synonymlist = [] #a group of synonymous tags to be added to syngroups
@@ -439,17 +439,17 @@ class DBManager:
                 if tag not in checkedlist:
                     checkedlist.append(tag)
                     synonymlist.append(tag)
-                    synonyms = [b['tag'] for b in bibledb.get_db_stuff(self.dbdata,"tag","tag",tag)]
+                    synonyms = [b['tag'] for b in bdblib.get_db_stuff(self.dbdata,"tag","tag",tag)]
                     while len(synonyms) > 0:
                         synonym = synonyms.pop()
                         if synonym not in checkedlist:
                             checkedlist.append(synonym)
                             synonymlist.append(synonym)
-                            synonyms += [b['tag'] for b in bibledb.get_db_stuff(self.dbdata,"tag","tag",synonym)]
+                            synonyms += [b['tag'] for b in bdblib.get_db_stuff(self.dbdata,"tag","tag",synonym)]
                     
                   #  #OLD Recursive way of getting syngroups
                   #  def recursivesynonyms(syno, thisgroup):
-                  #      synonyms = [b['tag'] for b in bibledb.get_db_stuff(self.dbdata,"tag","tag",syno)]
+                  #      synonyms = [b['tag'] for b in bdblib.get_db_stuff(self.dbdata,"tag","tag",syno)]
                   #      for tag in synonyms:
                   #          if tag not in thisgroup:
                   #              thisgroup.append(tag)
@@ -473,7 +473,7 @@ class DBManager:
             verses = []
             for i in range(len(syngroups)):
                 for tag in syngroups[i]["tags"]:
-                    checkverses = bibledb.get_db_stuff(self.dbdata, "verse", "tag", tag)
+                    checkverses = bdblib.get_db_stuff(self.dbdata, "verse", "tag", tag)
                     for verse in checkverses:
                         if verse not in verses:
                             verses.append(verse)
@@ -490,7 +490,7 @@ class DBManager:
             tags = [{"tag":b} for b in checklist]
             #count the verses for each tag
             for i in range(len(tags)):
-                tags[i]["verses"] = len(bibledb.get_db_stuff(self.dbdata, "verse", "tag", tags[i]["tag"]))
+                tags[i]["verses"] = len(bdblib.get_db_stuff(self.dbdata, "verse", "tag", tags[i]["tag"]))
                 if tags[i]["verses"] < tags_lo:
                     tags_lo = tags[i]["verses"]
                 if tags[i]["verses"] > tags_hi:
@@ -698,12 +698,12 @@ class VerseSortingPanel(ttk.Frame):
         #self.canvas.create_text(10, 10, anchor="nw", text="Right-hand canvas content")
 
     def get_books_like(self, dbdata, partial_book):
-        result = [book for book in bibledb.book_proper_names if partial_book.lower().strip() in book.lower().strip()]
+        result = [book for book in bdblib.book_proper_names if partial_book.lower().strip() in book.lower().strip()]
         return result
     
     def select_book(self, event):
         selected_book = TagInputDialog(self.master, self.dbdata, topselection = True, get_tags_like = self.get_books_like, thistitle = "Select Books", bookinputdialog = True).selected_tag
-        if (selected_book is not None) and (selected_book != "") and (selected_book in bibledb.book_proper_names) and (selected_book not in self.selected_books):
+        if (selected_book is not None) and (selected_book != "") and (selected_book in bdblib.book_proper_names) and (selected_book not in self.selected_books):
             self.selected_books.append(selected_book)
             self.display_attributes()
 
@@ -717,8 +717,8 @@ class VerseSortingPanel(ttk.Frame):
     def select_tag(self, event):
         #replace tagSelect() with the actual code for tag selection, to get the popup.
         selected_tag = TagInputDialog(self.master, self.dbdata, topselection = True).selected_tag
-        if (selected_tag is not None) and (selected_tag != "") and bibledb.tag_exists(self.dbdata, selected_tag):
-            selected_tag_synonyms = [b['tag'] for b in bibledb.get_db_stuff(self.dbdata,"tag","tag",selected_tag)]
+        if (selected_tag is not None) and (selected_tag != "") and bdblib.tag_exists(self.dbdata, selected_tag):
+            selected_tag_synonyms = [b['tag'] for b in bdblib.get_db_stuff(self.dbdata,"tag","tag",selected_tag)]
             
             if selected_tag and (selected_tag not in self.tags_list) and all(item not in self.tags_list for item in selected_tag_synonyms):
                 self.tags_list.append(selected_tag)
@@ -766,7 +766,7 @@ class VerseSortingPanel(ttk.Frame):
             root.clipboard_append(result)
             root.update()
         else:
-            print("ERROR in bibledb_Manager.copy_verse_list(). No access to root.")
+            print("ERROR in bdblib_Manager.copy_verse_list(). No access to root.")
 
     def export_tags_and_synonyms(self, event):
 
@@ -776,18 +776,18 @@ class VerseSortingPanel(ttk.Frame):
                 verses = []
                 notes = []
                 for tag in synonym_group:
-                    this_note = bibledb.get_db_stuff(self.dbdata, "note", "tag", tag)
+                    this_note = bdblib.get_db_stuff(self.dbdata, "note", "tag", tag)
                     if this_note:
                         this_note = this_note[0]['note']
                         notes.append(this_note)
-                    checkverses = bibledb.get_db_stuff(self.dbdata, "verse", "tag", tag)
+                    checkverses = bdblib.get_db_stuff(self.dbdata, "verse", "tag", tag)
                     for verse in checkverses:
                         if verse not in verses:
                             #print(verse)
                             verses.append(verse)
                 #I don't know if these functions will work, but they're basically what's being done down below in display_verses
                 verses.sort(key=lambda r: (r['start_book'], r['start_chapter'], r['start_verse']))#sort by start book first, then chapter, then verse, so all the verses appear in order
-                verses = [bibledb.normalize_vref(q) for q in verses]
+                verses = [bdblib.normalize_vref(q) for q in verses]
                 result.append({"tags":synonym_group,"notes":notes, "verses":verses})
             return result
         
@@ -814,7 +814,7 @@ class VerseSortingPanel(ttk.Frame):
                     
     def export_verse_notes(self, event): ##################################################
         #self.dbdata
-        verses = bibledb.get_all_verses_with_notes(self.dbdata)
+        verses = bdblib.get_all_verses_with_notes(self.dbdata)
         contents = ""
         for verse in verses:
             contents += verse['verse'] + '\n'
@@ -840,12 +840,12 @@ class VerseSortingPanel(ttk.Frame):
             for synonym_group in tags:
                 verses = []
                 for tag in synonym_group:
-                    checkverses = bibledb.get_db_stuff(self.dbdata, "verse", "tag", tag)
+                    checkverses = bdblib.get_db_stuff(self.dbdata, "verse", "tag", tag)
                     for verse in checkverses:
                         if verse not in verses:
                             verses.append(verse)
                 verses.sort(key=lambda r: (r['start_book'], r['start_chapter'], r['start_verse']))
-                verse_refs = [bibledb.normalize_vref(q) for q in verses]
+                verse_refs = [bdblib.normalize_vref(q) for q in verses]
                 result.append({"tags":synonym_group, "verses":verse_refs})
             return result
         exportdata = get_verses_for_taglist(tagslist)
@@ -854,12 +854,12 @@ class VerseSortingPanel(ttk.Frame):
             filename = os.path.join(folder, primary_tag + ".txt")
             cooccurring_tags = set()
             for vref in item['verses']:
-                tags_on_verse = [t['tag'] for t in bibledb.get_db_stuff(self.dbdata, "tag", "verse", vref)]
+                tags_on_verse = [t['tag'] for t in bdblib.get_db_stuff(self.dbdata, "tag", "verse", vref)]
                 cooccurring_tags.update(tags_on_verse)
             contents = ", ".join(sorted(cooccurring_tags)) + "\n"
             contents += "----------\n"
             for vref in item['verses']:
-                tags_on_verse = [t['tag'] for t in bibledb.get_db_stuff(self.dbdata, "tag", "verse", vref)]
+                tags_on_verse = [t['tag'] for t in bdblib.get_db_stuff(self.dbdata, "tag", "verse", vref)]
                 contents += vref + "\n"
                 contents += ", ".join(tags_on_verse) + "\n\n"
             with open(filename, 'w', encoding='utf-8') as f:
@@ -880,17 +880,17 @@ class VerseSortingPanel(ttk.Frame):
         for synonym_group in tagslist:
             verses = []
             for tag in synonym_group:
-                checkverses = bibledb.get_db_stuff(self.dbdata, "verse", "tag", tag)
+                checkverses = bdblib.get_db_stuff(self.dbdata, "verse", "tag", tag)
                 for verse in checkverses:
                     if verse not in verses:
                         verses.append(verse)
             verses.sort(key=lambda r: (r['start_book'], r['start_chapter'], r['start_verse']))
-            verse_refs = [bibledb.normalize_vref(q) for q in verses]
+            verse_refs = [bdblib.normalize_vref(q) for q in verses]
             verse_objs = verses
             verse_dict = dict(zip(verse_refs, verse_objs))
             verse_tags = {}
             for vref in verse_refs:
-                tags = [t['tag'] for t in bibledb.get_db_stuff(self.dbdata, "tag", "verse", vref)]
+                tags = [t['tag'] for t in bdblib.get_db_stuff(self.dbdata, "tag", "verse", vref)]
                 verse_tags[vref] = set(tags)
             co_tags = set()
             for tags in verse_tags.values():
@@ -904,13 +904,13 @@ class VerseSortingPanel(ttk.Frame):
                 if tag not in checkedlist:
                     checkedlist.append(tag)
                     synonymlist.append(tag)
-                    synonyms = [b['tag'] for b in bibledb.get_db_stuff(self.dbdata,"tag","tag",tag)]
+                    synonyms = [b['tag'] for b in bdblib.get_db_stuff(self.dbdata,"tag","tag",tag)]
                     while len(synonyms) > 0:
                         synonym = synonyms.pop()
                         if synonym not in checkedlist:
                             checkedlist.append(synonym)
                             synonymlist.append(synonym)
-                            synonyms += [b['tag'] for b in bibledb.get_db_stuff(self.dbdata,"tag","tag",synonym)]
+                            synonyms += [b['tag'] for b in bdblib.get_db_stuff(self.dbdata,"tag","tag",synonym)]
                     sub_syngroups.append(synonymlist)
                     synonymlist = []
             t_set = set(synonym_group)
@@ -974,7 +974,7 @@ class VerseSortingPanel(ttk.Frame):
 
         if verses is not None and len(verses) > 0:
             for vtuple in verses:
-                vref = bibledb.normalize_vref({
+                vref = bdblib.normalize_vref({
                     "ID": None,
                     "start_book": vtuple[0],
                     "start_chapter": vtuple[1],
@@ -994,11 +994,11 @@ class VerseSortingPanel(ttk.Frame):
                     if tg in seen_tags:
                         continue
                     seen_tags.add(tg)
-                    for row in bibledb.get_db_stuff(self.dbdata, "verse", "tag", tg):
-                        vref = bibledb.normalize_vref(row)
+                    for row in bdblib.get_db_stuff(self.dbdata, "verse", "tag", tg):
+                        vref = bdblib.normalize_vref(row)
                         verse_refs.add(vref)
                     # synonyms
-                    syns = [b['tag'] for b in bibledb.get_db_stuff(self.dbdata, "tag", "tag", tg)]
+                    syns = [b['tag'] for b in bdblib.get_db_stuff(self.dbdata, "tag", "tag", tg)]
                     for s in syns:
                         if s not in seen_tags:
                             stack.append(s)
@@ -1019,7 +1019,7 @@ class VerseSortingPanel(ttk.Frame):
         all_tags_in_verses = set()
         verse_to_tags = defaultdict(set)
         for vref in verse_refs:
-            rows = bibledb.get_db_stuff(self.dbdata, "tag", "verse", vref)
+            rows = bdblib.get_db_stuff(self.dbdata, "tag", "verse", vref)
             for r in rows:
                 t = r['tag']
                 verse_to_tags[vref].add(t)
@@ -1039,7 +1039,7 @@ class VerseSortingPanel(ttk.Frame):
                     continue
                 visited.add(tg)
                 comp.add(tg)
-                syns = [b['tag'] for b in bibledb.get_db_stuff(self.dbdata, "tag", "tag", tg)]
+                syns = [b['tag'] for b in bdblib.get_db_stuff(self.dbdata, "tag", "tag", tg)]
                 for s in syns:
                     if s in all_tags_in_verses and s not in visited:
                         stack.append(s)
@@ -1173,16 +1173,16 @@ class VerseSortingPanel(ttk.Frame):
                 verses = []
                 notes = []
                 for tag in synonym_group:
-                    this_note = bibledb.get_db_stuff(self.dbdata, "note", "tag", tag)
+                    this_note = bdblib.get_db_stuff(self.dbdata, "note", "tag", tag)
                     if this_note:
                         this_note = this_note[0]['note']
                         notes.append(this_note)
-                    checkverses = bibledb.get_db_stuff(self.dbdata, "verse", "tag", tag)
+                    checkverses = bdblib.get_db_stuff(self.dbdata, "verse", "tag", tag)
                     for verse in checkverses:
                         if verse not in verses:
                             verses.append(verse)
                 verses.sort(key=lambda r: (r['start_book'], r['start_chapter'], r['start_verse']))
-                verses = [bibledb.normalize_vref(q) for q in verses]
+                verses = [bdblib.normalize_vref(q) for q in verses]
                 result.append({"tags":synonym_group,"notes":notes, "verses":verses})
             return result
         
@@ -1204,7 +1204,7 @@ class VerseSortingPanel(ttk.Frame):
             contents += "+=+=+=+=+=+=+=+=+=+=+=+=+=+=+\n\n"
             contents += '  //////VERSE NOTES://////\n'
             for verse in item['verses']:
-                vnotes = bibledb.get_db_stuff(self.dbdata, "note", "verse", verse)
+                vnotes = bdblib.get_db_stuff(self.dbdata, "note", "verse", verse)
                 if vnotes:
                     contents += verse + '\n'
                     contents += vnotes[0]['note'] + '\n\n'
@@ -1247,12 +1247,12 @@ class VerseSortingPanel(ttk.Frame):
 
         # Build tag→verse mapping
         tag_to_verses = defaultdict(set)
-        all_tags = [r['tag'] for r in bibledb.get_tag_list(self.dbdata)]
+        all_tags = [r['tag'] for r in bdblib.get_tag_list(self.dbdata)]
         all_tags = sorted(set(all_tags))
         for t in all_tags:
-            verses = bibledb.get_db_stuff(self.dbdata, "verse", "tag", t)
+            verses = bdblib.get_db_stuff(self.dbdata, "verse", "tag", t)
             for v in verses:
-                vref = bibledb.normalize_vref(v)
+                vref = bdblib.normalize_vref(v)
                 tag_to_verses[t].add(vref)
 
         # remove empty tags
@@ -1376,7 +1376,7 @@ class VerseSortingPanel(ttk.Frame):
 
         if verses is not None and len(verses) > 0:
             for vtuple in verses:
-                vref = bibledb.normalize_vref({
+                vref = bdblib.normalize_vref({
                     "ID": None,
                     "start_book": vtuple[0],
                     "start_chapter": vtuple[1],
@@ -1395,10 +1395,10 @@ class VerseSortingPanel(ttk.Frame):
                     if tg in seen_tags:
                         continue
                     seen_tags.add(tg)
-                    for row in bibledb.get_db_stuff(self.dbdata, "verse", "tag", tg):
-                        vref = bibledb.normalize_vref(row)
+                    for row in bdblib.get_db_stuff(self.dbdata, "verse", "tag", tg):
+                        vref = bdblib.normalize_vref(row)
                         verse_refs.add(vref)
-                    syns = [b['tag'] for b in bibledb.get_db_stuff(self.dbdata, "tag", "tag", tg)]
+                    syns = [b['tag'] for b in bdblib.get_db_stuff(self.dbdata, "tag", "tag", tg)]
                     for s in syns:
                         if s not in seen_tags:
                             stack.append(s)
@@ -1418,7 +1418,7 @@ class VerseSortingPanel(ttk.Frame):
         all_tags_in_verses = set()
         verse_to_tags = defaultdict(set)
         for vref in verse_refs:
-            rows = bibledb.get_db_stuff(self.dbdata, "tag", "verse", vref)
+            rows = bdblib.get_db_stuff(self.dbdata, "tag", "verse", vref)
             for r in rows:
                 t = r['tag']
                 verse_to_tags[vref].add(t)
@@ -1440,7 +1440,7 @@ class VerseSortingPanel(ttk.Frame):
                     continue
                 visited.add(tg)
                 comp.add(tg)
-                syns = [b['tag'] for b in bibledb.get_db_stuff(self.dbdata, "tag", "tag", tg)]
+                syns = [b['tag'] for b in bdblib.get_db_stuff(self.dbdata, "tag", "tag", tg)]
                 for s in syns:
                     if s in all_tags_in_verses and s not in visited:
                         stack.append(s)
@@ -1545,12 +1545,12 @@ class VerseSortingPanel(ttk.Frame):
                     #prepare the verse set for this tag and its synonyms by getting the verses for this tag first.
                     verse_set = set()
                     #print("tag", tag)
-                    vd = bibledb.get_db_stuff(self.dbdata, "verse", "tag", tag) #vd now has a list of all the verses as returned by get_db_stuff
+                    vd = bdblib.get_db_stuff(self.dbdata, "verse", "tag", tag) #vd now has a list of all the verses as returned by get_db_stuff
                     vdcopy = vd.copy() #make a copy of verse data so we can parse it safely
                     #eliminate all verses that aren't in the selected books
                     if (len(self.selected_books) > 0):
                         for verse in vdcopy:
-                            if (bibledb.book_proper_names[verse["start_book"]] not in bibledb.book_proper_names) and (bibledb.book_proper_names[verse["end_book"]] not in bibledb.book_proper_names):
+                            if (bdblib.book_proper_names[verse["start_book"]] not in bdblib.book_proper_names) and (bdblib.book_proper_names[verse["end_book"]] not in bdblib.book_proper_names):
                                 vd.remove(verse)
                         vdcopy = vd.copy() #remake vdcopy for the next filter
 
@@ -1560,7 +1560,7 @@ class VerseSortingPanel(ttk.Frame):
                     verse_set.update(((m["start_book"],m["start_chapter"],m["start_verse"],m["end_book"],m["end_chapter"],m["end_verse"]) for m in vd))
 
                     # Get all synonyms for the current tag (including the tag itself)
-                    synonyms = bibledb.get_db_stuff(self.dbdata, "tag", "tag", tag)
+                    synonyms = bdblib.get_db_stuff(self.dbdata, "tag", "tag", tag)
                     #for synonym in synonyms:
                     while len(synonyms) > 0:
                         synonym = synonyms.pop()
@@ -1570,9 +1570,9 @@ class VerseSortingPanel(ttk.Frame):
                             index = checklist.index(tag)
                             checklist.insert(index+1,synonym['tag'])
                             synonymlist.append(synonym['tag'])
-                            synonyms += bibledb.get_db_stuff(self.dbdata, "tag", "tag", synonym['tag'])
+                            synonyms += bdblib.get_db_stuff(self.dbdata, "tag", "tag", synonym['tag'])
                         # add the verses for every synonym
-                        vd = bibledb.get_db_stuff(self.dbdata, "verse", "tag", synonym['tag'])
+                        vd = bdblib.get_db_stuff(self.dbdata, "verse", "tag", synonym['tag'])
                         #print("vd 2", vd)
                         verse_set.update(((m["start_book"],m["start_chapter"],m["start_verse"],m["end_book"],m["end_chapter"],m["end_verse"]) for m in vd))
 
@@ -1805,7 +1805,7 @@ class VerseSortingPanel(ttk.Frame):
                 self.canvas.create_rectangle(x_offset+tagx, y_offset, x_offset+tagx+tag_width, y_offset+textlineheight+textlinegap*2, fill='azure', tags=tag_display_binder)
 
                 #if there's a note on this tag, put a little triangle on the corner of the tag's button
-                if (len(bibledb.get_db_stuff(self.dbdata, "note", "tag", tag)) > 0):
+                if (len(bdblib.get_db_stuff(self.dbdata, "note", "tag", tag)) > 0):
                     self.canvas.create_polygon( #triangle for tags with comments
                         x_offset + tagx + tag_width,  # x1: Upper-right corner x
                         y_offset,                     # y1: Upper-right corner y
@@ -1828,11 +1828,11 @@ class VerseSortingPanel(ttk.Frame):
             
             try:
                 # If the user makes a DB using a version of the Bible that has the apocrypha, and then tries to pull notes about Revelation from that DB while he has a protestant Bible loaded...
-                #    then the reference to bibledb_Lib.book_proper_names[] will throw an index out of range error.
+                #    then the reference to bdblib_Lib.book_proper_names[] will throw an index out of range error.
                 #    I am making this tool primarily for myself to use, and I don't include the apocrypha in my Bible, so I don't plan to fix this.
                 
                 verses.sort(key=lambda r: (r[0], r[1], r[2]))#sort by start book first, then chapter, then verse, so all the verses appear in order
-                self.verse_xref_list = [(bibledb.book_proper_names[q[0]]+" "+str(q[1])+":"+str(q[2]), bibledb.book_proper_names[q[3]]+" "+str(q[4])+":"+str(q[5])) for q in verses]
+                self.verse_xref_list = [(bdblib.book_proper_names[q[0]]+" "+str(q[1])+":"+str(q[2]), bdblib.book_proper_names[q[3]]+" "+str(q[4])+":"+str(q[5])) for q in verses]
             except:
                 self.verse_xref_list = []
                 print("Failed to get the verse references for that tag. This error might occur if your DB was made with a version of the Bible that had different books from the version you're currently using. For example, if the DB was made including the apocrypha, but your current Bible doesn't have it.")
@@ -1842,7 +1842,7 @@ class VerseSortingPanel(ttk.Frame):
             for xverse in self.verse_xref_list:
                 itemText = combineVRefs(xverse[0],xverse[1])#this is the human readable verse reference
                 #Check if we're filtering on verses with comments
-                if self.comments_only and not (len(bibledb.get_db_stuff(self.dbdata, "note", "verse", itemText)) > 0):
+                if self.comments_only and not (len(bdblib.get_db_stuff(self.dbdata, "note", "verse", itemText)) > 0):
                     continue #if we're filtering and no comment, then skip this iteration in the foor loop.
                 #check if the verse should be book filtered
                 if len(self.selected_books) > 0:

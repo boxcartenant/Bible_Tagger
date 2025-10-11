@@ -1,13 +1,13 @@
 import tkinter as tk
 from tkinter import ttk
 from tkinter import filedialog
-import bibledb_Lib
+import bibledb_lib
 from tkinter.font import Font
 from tkinter import Misc
 from tkinter import simpledialog
 from tkinter import messagebox
-from bibledb_Manager import DBManager
-from bibledb_Manager import TagInputDialog, combineVRefs
+from bibledb_manager import DBManager
+from bibledb_manager import TagInputDialog, combineVRefs
 import os, re
 import configparser
 import sys
@@ -106,7 +106,7 @@ class BibleTaggerApp:
 
     def update_tree_colors(self):
         #do a sql query to find out what chapters have notes or tags
-        marked_chapters = bibledb_Lib.find_note_tag_chapters(open_db_file)
+        marked_chapters = bibledb_lib.find_note_tag_chapters(open_db_file)
         #recolor all the chapters that have content
         self.navigation_tree.recolor(marked_chapters)
         pass
@@ -137,20 +137,20 @@ class BibleTaggerApp:
         #this is used when you are looking at tag xref data and you click a verse associated with the tag.
         #causes the tree and canvas to navigate to the verse you clicked.
         #data = (startverse, endverse)
-        start = bibledb_Lib.parseVerseReference(data[0])
-        end = bibledb_Lib.parseVerseReference(data[1])
+        start = bibledb_lib.parseVerseReference(data[0])
+        end = bibledb_lib.parseVerseReference(data[1])
 
         checkbook = self.scripture_panel.selected_start_b #capture this, so we won't reset the canvas view if we're not moving chapters.
         
-        self.scripture_panel.selected_start_b = bibledb_Lib.book_proper_names[start['sb']]
-        self.scripture_panel.selected_end_b = bibledb_Lib.book_proper_names[end['eb']]
+        self.scripture_panel.selected_start_b = bibledb_lib.book_proper_names[start['sb']]
+        self.scripture_panel.selected_end_b = bibledb_lib.book_proper_names[end['eb']]
         self.scripture_panel.selected_start_c = start['sc']
         self.scripture_panel.selected_end_c = end['ec']
         self.scripture_panel.selected_start_v = start['sv']
         self.scripture_panel.selected_end_v = end['ev']
 
         #navigate to the first verse in the range
-        navtreedata = "/"+bibledb_Lib.book_proper_names[start['sb']]+"/Ch "+start['sc']
+        navtreedata = "/"+bibledb_lib.book_proper_names[start['sb']]+"/Ch "+start['sc']
         
         #if not scrollreset:
             #Sometimes if you are clicking a verse in tag data for a chapter you already have open, you'll already be looking at that verse
@@ -304,12 +304,12 @@ class NavigationTree:
         global data_model
         with open(bible_file_path, 'r') as file:
             bible_file_content = file.read()
-            data_model = bibledb_Lib.getBibleData(bible_file_content)
+            data_model = bibledb_lib.getBibleData(bible_file_content)
         #print("dumping output from open_file_dialog")
         #print(data_model)
         self.populate_tree(data_model, '')
         self.data_model_loaded = True
-        self.open_button.configure(text = "Tag DB Statistics")
+        self.open_button.configure(text = "Manage DB")
     
     def open_file_dialog(self):
         #button to open a Bible file
@@ -406,9 +406,9 @@ class ScripturePanel:
         else:
             bookname = splitscope[0]
         #print(bookname)
-        bb = bibledb_Lib.getBookIndex(bookname)
-        sb = bibledb_Lib.getBookIndex(self.selected_start_b)
-        eb = bibledb_Lib.getBookIndex(self.selected_end_b)
+        bb = bibledb_lib.getBookIndex(bookname)
+        sb = bibledb_lib.getBookIndex(self.selected_start_b)
+        eb = bibledb_lib.getBookIndex(self.selected_end_b)
         #print(vv)
         #print(cc)
         if event.state & (1<<0):
@@ -421,23 +421,23 @@ class ScripturePanel:
             
             #set selected chapters in order
             if bb > sb:
-                self.selected_end_b = bibledb_Lib.book_proper_names[bb]
+                self.selected_end_b = bibledb_lib.book_proper_names[bb]
                 eb = bb
                 self.selected_end_c = cc
                 self.selected_end_v = vv
             elif bb < sb:
-                self.selected_end_b = bibledb_Lib.book_proper_names[sb]
+                self.selected_end_b = bibledb_lib.book_proper_names[sb]
                 eb = sb
-                self.selected_start_b = bibledb_Lib.book_proper_names[bb]
+                self.selected_start_b = bibledb_lib.book_proper_names[bb]
                 sb = bb
                 self.selected_end_c = self.selected_start_c
                 self.selected_start_c = cc
                 self.selected_end_v = self.selected_start_v
                 self.selected_start_v = vv
             else: #same book
-                self.selected_start_b = bibledb_Lib.book_proper_names[bb]
+                self.selected_start_b = bibledb_lib.book_proper_names[bb]
                 sb = bb
-                self.selected_end_b = bibledb_Lib.book_proper_names[bb]
+                self.selected_end_b = bibledb_lib.book_proper_names[bb]
                 eb = bb
             if sb == eb:
                 if int(cc) > int(self.selected_start_c):
@@ -460,8 +460,8 @@ class ScripturePanel:
                         self.selected_end_v = self.selected_start_v
                         self.selected_start_v = vv
         else:
-            self.selected_start_b = bibledb_Lib.book_proper_names[bb]
-            self.selected_end_b = bibledb_Lib.book_proper_names[bb]
+            self.selected_start_b = bibledb_lib.book_proper_names[bb]
+            self.selected_end_b = bibledb_lib.book_proper_names[bb]
             self.selected_start_v = vv
             self.selected_end_v = vv
             self.selected_start_c = cc
@@ -507,7 +507,7 @@ class ScripturePanel:
 
             #we're going to draw vertical lines left of the verses to indicate which verses have notes and tags.
             #get the tagged and noted verse rows
-            notestags = bibledb_Lib.find_note_tag_verses(open_db_file, thisbook, thischapter)
+            notestags = bibledb_lib.find_note_tag_verses(open_db_file, thisbook, thischapter)
             #move the verses over to make room for the lines. Two pixels for each unique verse ID.
             id_lines = len(notestags)*2
             if id_lines > 0:
@@ -520,13 +520,13 @@ class ScripturePanel:
             verse_area_width = self.paned_window.sashpos(1) - self.paned_window.sashpos(0) - self.scrollbar_width - textelbowroom*2
             v = 1
             c = int(item_hierarchy[-1].replace("Ch ",""))
-            b = int(bibledb_Lib.getBookIndex(item_hierarchy[-2]))
+            b = int(bibledb_lib.getBookIndex(item_hierarchy[-2]))
             sv = int(self.selected_start_v)
             ev = int(self.selected_end_v)
             sc = int(self.selected_start_c)
             ec = int(self.selected_end_c)
-            sb = int(bibledb_Lib.getBookIndex(self.selected_start_b))
-            eb = int(bibledb_Lib.getBookIndex(self.selected_end_b))
+            sb = int(bibledb_lib.getBookIndex(self.selected_start_b))
+            eb = int(bibledb_lib.getBookIndex(self.selected_end_b))
 
             #print("book:",sb, b, eb,"\nchapter:",sc,c,ec,"\nverse:",sv, v, ev)
             verse_heights = []
@@ -850,7 +850,7 @@ class TaggerPanel:
             #Check the DB to find out if there are notes for the selected verse
             # (here we are assuming that we're showing a verse. Later we need to add support for showing tag data)
             # For now, we're only showing index 0, the first row of the results, because idk if I'm going to permit more rows than that to exist.
-            note_query_result = bibledb_Lib.get_db_stuff(open_db_file, "note", type_to_get, self.current_data["ref"])
+            note_query_result = bibledb_lib.get_db_stuff(open_db_file, "note", type_to_get, self.current_data["ref"])
                 
             if len(note_query_result) > 0:
                 self.note_area_text = note_query_result[0]['note']
@@ -886,7 +886,7 @@ class TaggerPanel:
             # LIST OF TAGS ##---- DONE
 
             #Check the DB for tags for the selected verse or tag
-            self.tags_list = bibledb_Lib.get_db_stuff(open_db_file, "tag", type_to_get, self.current_data["ref"])
+            self.tags_list = bibledb_lib.get_db_stuff(open_db_file, "tag", type_to_get, self.current_data["ref"])
 
             xb_width = self.canvasFont.measure(" x ")
             tagx = 0
@@ -897,7 +897,7 @@ class TaggerPanel:
             
             #get all synonymous tags
             for tag in checklist:
-                synonyms = bibledb_Lib.get_db_stuff(open_db_file,"tag","tag",tag['tag'])
+                synonyms = bibledb_lib.get_db_stuff(open_db_file,"tag","tag",tag['tag'])
                 while len(synonyms) > 0:
                 #for synonym in synonyms:
                     synonym = synonyms.pop()
@@ -906,7 +906,7 @@ class TaggerPanel:
                         index = self.tags_list.index(tag)
                         self.tags_list.insert(index+1,synonym)
                         synonymlist.append(synonym)
-                        synonyms += bibledb_Lib.get_db_stuff(open_db_file,"tag","tag",synonym['tag'])
+                        synonyms += bibledb_lib.get_db_stuff(open_db_file,"tag","tag",synonym['tag'])
 
             
             #show the tags list
@@ -933,7 +933,7 @@ class TaggerPanel:
                 self.canvas.create_rectangle(x_offset+tagx, y_offset, x_offset+tagx+tag_width, y_offset+textlineheight+textlinegap*2, fill='azure', tags=tag_display_binder)
 
                 #if there's a note on this tag, put a little triangle on the corner of the tag's button
-                if (len(bibledb_Lib.get_db_stuff(open_db_file, "note", "tag", tagname)) > 0):
+                if (len(bibledb_lib.get_db_stuff(open_db_file, "note", "tag", tagname)) > 0):
                     self.canvas.create_polygon( #triangle for tags with comments
                         x_offset + tagx + tag_width,  # x1: Upper-right corner x
                         y_offset,                     # y1: Upper-right corner y
@@ -967,11 +967,11 @@ class TaggerPanel:
             # VERSE LIST ##---- DONE
             #the verse list only appears when looking at tags.
             if self.current_item == "tagClick":
-                verses = bibledb_Lib.get_db_stuff(open_db_file, "verse", "tag", self.current_data["ref"])
+                verses = bibledb_lib.get_db_stuff(open_db_file, "verse", "tag", self.current_data["ref"])
 
                 #in the case of a tag, all associated tags are synonyms.
                 for syntag in self.tags_list:
-                    more_verses = bibledb_Lib.get_db_stuff(open_db_file, "verse", "tag", syntag['tag'])
+                    more_verses = bibledb_lib.get_db_stuff(open_db_file, "verse", "tag", syntag['tag'])
                     for another_verse in more_verses:
                         if another_verse not in verses:
                             verses.append(another_verse)
@@ -979,10 +979,10 @@ class TaggerPanel:
                 
                 try:
                     # If the user makes a DB using a version of the Bible that has the apocrypha, and then tries to pull notes about Revelation from that DB while he has a protestant Bible loaded...
-                    #    then the reference to bibledb_Lib.book_proper_names[] will throw an index out of range error.
+                    #    then the reference to bibledb_lib.book_proper_names[] will throw an index out of range error.
                     #    I am making this tool primarily for myself to use, and I don't include the apocrypha in my Bible, so I don't plan to fix this.
                     verses.sort(key=lambda r: (r["start_book"], r["start_chapter"], r["start_verse"]))
-                    self.verse_xref_list = [(bibledb_Lib.book_proper_names[x["start_book"]]+" "+str(x["start_chapter"])+":"+str(x["start_verse"]), bibledb_Lib.book_proper_names[x["end_book"]]+" "+str(x["end_chapter"])+":"+str(x["end_verse"])) for x in verses]
+                    self.verse_xref_list = [(bibledb_lib.book_proper_names[x["start_book"]]+" "+str(x["start_chapter"])+":"+str(x["start_verse"]), bibledb_lib.book_proper_names[x["end_book"]]+" "+str(x["end_chapter"])+":"+str(x["end_verse"])) for x in verses]
                 except:
                     self.verse_xref_list = []
                     print("Failed to get the verse references for that tag. This error might occur if your DB was made with a version of the Bible that had different books from the version you're currently using. For example, if the DB was made including the apocrypha, but your current Bible doesn't have it.")
@@ -1048,10 +1048,10 @@ class TaggerPanel:
         answer = messagebox.askyesno("Really delete?", "Do you want to remove tag \""+str(tag)+"\"?")
         if answer:
             if reftype == "verse":
-                bibledb_Lib.delete_verse_tag(open_db_file, verse, tag)
+                bibledb_lib.delete_verse_tag(open_db_file, verse, tag)
             elif reftype == "tag":
                 #in this case, "verse" is just another tag.
-                bibledb_Lib.delete_tag_tag(open_db_file, verse, tag)
+                bibledb_lib.delete_tag_tag(open_db_file, verse, tag)
             self.display_attributes()
             self.cause_canvas_to_refresh()
             self.update_tree_colors()
@@ -1066,10 +1066,10 @@ class TaggerPanel:
         #print("Do the tag creation logic here")
         if (tag is not None) and (tag != ""):
             if reftype == "verse":
-                bibledb_Lib.add_verse_tag(open_db_file, verse, tag)
+                bibledb_lib.add_verse_tag(open_db_file, verse, tag)
             elif reftype == "tag":
                 #in this case, "verse" is just another tag.
-                bibledb_Lib.add_tag_tag(open_db_file, verse, tag)
+                bibledb_lib.add_tag_tag(open_db_file, verse, tag)
             self.display_attributes()
             self.cause_canvas_to_refresh()
             self.update_tree_colors()
@@ -1092,9 +1092,9 @@ class TaggerPanel:
         if new_text is not None and new_text != "":
             self.note_area_text = new_text
             if reftype == "verse":
-                bibledb_Lib.add_verse_note(open_db_file, reference, new_text)
+                bibledb_lib.add_verse_note(open_db_file, reference, new_text)
             elif reftype == "tag":
-                bibledb_Lib.add_tag_note(open_db_file, reference, new_text)
+                bibledb_lib.add_tag_note(open_db_file, reference, new_text)
             self.display_attributes()
             self.cause_canvas_to_refresh()
             self.update_tree_colors()
@@ -1102,9 +1102,9 @@ class TaggerPanel:
             answer = messagebox.askyesno("Really delete?", "Do you want to delete this note?")
             if answer:
                 if reftype == "verse":
-                    bibledb_Lib.delete_verse_note(open_db_file, reference)
+                    bibledb_lib.delete_verse_note(open_db_file, reference)
                 elif reftype == "tag":
-                    bibledb_Lib.delete_tag_note(open_db_file, reference)
+                    bibledb_lib.delete_tag_note(open_db_file, reference)
                 self.display_attributes()
                 self.cause_canvas_to_refresh()
                 self.update_tree_colors()
@@ -1155,7 +1155,7 @@ class TaggerPanel:
             with open(file_path, 'w') as file:
                 # Create the file if it doesn't exist
                 file.write("")
-            bibledb_Lib.makeDB(file_path)
+            bibledb_lib.makeDB(file_path)
             global open_db_file
             open_db_file = file_path
             self.display_attributes()
@@ -1203,7 +1203,7 @@ if __name__ == "__main__":
                 # Create empty file and initialize database tables
                 with open(bdbpath, 'w') as f:
                     f.write("")
-                bibledb_Lib.makeDB(bdbpath)
+                bibledb_lib.makeDB(bdbpath)
                 print(f"Created new database at {bdbpath}")
             bta.load_bdb(bdbpath)
         except Exception as e:
