@@ -201,7 +201,7 @@ class TagInputDialog(simpledialog.Dialog):
 
 ######################Secondary Window is the window and the bargraph column. The filter view is instantiated here.
 
-class SecondaryWindow:
+class DBManager:
     def __init__(self, master, callback, dbdata = None):
         self.master = master
         self.callback = callback #used for clicking a tag and setting it as the current tag in the main window
@@ -228,7 +228,8 @@ class SecondaryWindow:
             return
         # Set up the secondary window
         self.top_window = tk.Toplevel(self.master)
-        self.top_window.title("DB Info")
+        self.top_window.title("DB Manager")
+        self.top_window.iconbitmap("./bibletaggericon.ico")
         self.top_window.geometry("800x500")
         self.reload_id = None
         self.reload_id2 = None
@@ -270,9 +271,9 @@ class SecondaryWindow:
         self.this_window.add(self.myFrame)
 
         #add another frame to the right-hand side of the window. We're using two columns now, baby!
-        self.rightFrame = RightHandFrame(self.master, self.top_window, self.this_window, self.callback, self.dbdata, self)
-        self.rightFrame.grid(row=0, column=1, sticky="nsew")
-        self.this_window.add(self.rightFrame)
+        self.verse_sorting_panel = VerseSortingPanel(self.master, self.top_window, self.this_window, self.callback, self.dbdata, self)
+        self.verse_sorting_panel.grid(row=0, column=1, sticky="nsew")
+        self.this_window.add(self.verse_sorting_panel)
 
         #configure the scroll region to make the canvas scrollable
         canvas_width = self.canvas.winfo_reqwidth()
@@ -296,8 +297,8 @@ class SecondaryWindow:
         self.top_window.bind("<MouseWheel>", self.scroll_active_panel)
         self.canvas.bind("<Enter>", self.set_active_panel)
         self.canvas.bind("<Leave>", self.clear_active_panel)
-        self.rightFrame.canvas.bind("<Enter>", self.set_active_panel)
-        self.rightFrame.canvas.bind("<Leave>", self.clear_active_panel)
+        self.verse_sorting_panel.canvas.bind("<Enter>", self.set_active_panel)
+        self.verse_sorting_panel.canvas.bind("<Leave>", self.clear_active_panel)
 
     def set_active_panel(self, event):
         # Set the active panel to the widget under the mouse
@@ -332,7 +333,7 @@ class SecondaryWindow:
 
     def window_resize(self, event):
         # Resizing the window doesn't move the sash, but only results in resizing the right-hand frame.
-        self.rightFrame.display_attributes(canvas_width = self.this_window.winfo_width() - self.this_window.sashpos(0))
+        self.verse_sorting_panel.display_attributes(canvas_width = self.this_window.winfo_width() - self.this_window.sashpos(0))
     
     def on_sash_drag(self,event):
         # If the moved sash is near the treeview sash (left), update the tree view
@@ -341,9 +342,9 @@ class SecondaryWindow:
             self.myFrame.columnconfigure(0, weight=1)
             self.myFrame.configure(width=new_sash_position)
             #update the canvas
-            self.rightFrame.display_attributes(canvas_width = self.this_window.winfo_width() - new_sash_position)
+            self.verse_sorting_panel.display_attributes(canvas_width = self.this_window.winfo_width() - new_sash_position)
             self.on_resize(event)
-            #self.rightFrame.display_attributes(canvas_width = self.this_window.winfo_width() - new_sash_position)
+            #self.verse_sorting_panel.display_attributes(canvas_width = self.this_window.winfo_width() - new_sash_position)
     
     def on_tag_click(self, event, item_id):
         self.callback(item_id)
@@ -641,7 +642,7 @@ class SecondaryWindow:
 
 ###########################################Right Hand Frame is the verse sorting area. Probably not a useful name for it, now that I think about it.
 
-class RightHandFrame(ttk.Frame):
+class VerseSortingPanel(ttk.Frame):
     def __init__(self, master, parent_window, parent, callback = None, dbdata = None, left_frame = None, *args, **kwargs):
         super().__init__(parent, *args, **kwargs)
         self.parent_window = parent_window

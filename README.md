@@ -37,7 +37,6 @@ I programmed this around the output of SWORD-to-JSON. Here's the link to that: h
 - Add a tool to merge databases
 - Make verse references in the DB more explicit so that the tool will accommodate switching between translations with missing verses
 - Make it so that you don't have to select a verse before you load your DB
-- Change the names of all of the canvases/panels (e.g. "canvas view" and "options panel") to something more intelligible in the code.
 
 # Getting Started
 

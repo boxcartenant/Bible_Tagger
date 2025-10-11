@@ -6,7 +6,7 @@ from tkinter.font import Font
 from tkinter import Misc
 from tkinter import simpledialog
 from tkinter import messagebox
-from bibledb_Manager import SecondaryWindow
+from bibledb_Manager import DBManager
 from bibledb_Manager import TagInputDialog, combineVRefs
 import os, re
 import configparser
@@ -48,25 +48,25 @@ class BibleTaggerApp:
 
         self.navigation_tree = NavigationTree(self.master, self.paned_window, self.tree_callback, self.dbManager_callback)
         self.scripture_panel = ScripturePanel(self.master, self.paned_window, self.canvas_callback)
-        self.options_panel = OptionsPanel(self.master, self.paned_window, self.options_callback, self.cause_canvas_to_refresh, self.update_tree_colors)
+        self.tagger_panel = TaggerPanel(self.master, self.paned_window, self.options_callback, self.cause_canvas_to_refresh, self.update_tree_colors)
 
         self.paned_window.bind("<B1-Motion>", self.on_sash_drag)
-        self.paned_window.bind("<Configure>", lambda event : self.options_panel.display_attributes(None))
+        self.paned_window.bind("<Configure>", lambda event : self.tagger_panel.display_attributes(None))
 
         #fixing the scrollbar behavior
         self.active_panel = None
         self.master.bind("<MouseWheel>", self.scroll_active_panel)
         self.scripture_panel.canvas.bind("<Enter>", self.set_active_panel)
         self.scripture_panel.canvas.bind("<Leave>", self.clear_active_panel)
-        self.options_panel.canvas.bind("<Enter>", self.set_active_panel)
-        self.options_panel.canvas.bind("<Leave>", self.clear_active_panel)
-        #self.options_panel.canvas_frame.bind("<MouseWheel>", self.scroll_active_panel)
+        self.tagger_panel.canvas.bind("<Enter>", self.set_active_panel)
+        self.tagger_panel.canvas.bind("<Leave>", self.clear_active_panel)
+        #self.tagger_panel.canvas_frame.bind("<MouseWheel>", self.scroll_active_panel)
 
     def load_json(self, jsonpath):
         self.navigation_tree.load_json(jsonpath)
 
     def load_bdb(self, bdbpath):
-        self.options_panel.load_bdb(bdbpath, True)
+        self.tagger_panel.load_bdb(bdbpath, True)
 
     def set_active_panel(self, event):
         # Set the active panel to the widget under the mouse
@@ -100,7 +100,7 @@ class BibleTaggerApp:
             self.scripture_panel.canvas_callback(None, None)
         #in both cases, we need to update the canvas where the verses are (middle)
         self.scripture_panel.display_chapter()
-        self.options_panel.display_attributes()
+        self.tagger_panel.display_attributes()
 
         #To Do: account for situations where the user puts the sashes together.
 
@@ -126,8 +126,8 @@ class BibleTaggerApp:
         # data is like {"verse":"in the beginning...", "ref": "Genesis 1:1"}
         
         # handle tree-related actions caused by canvas interactions here
-        self.options_panel.display_attributes(item, data, shift_key)
-        self.options_panel.reset_scrollregion(item)
+        self.tagger_panel.display_attributes(item, data, shift_key)
+        self.tagger_panel.reset_scrollregion(item)
         1;
 
     def cause_canvas_to_refresh(self):
@@ -159,8 +159,8 @@ class BibleTaggerApp:
         #self.navigation_tree.select_item(navtreedata, scrollreset)
         self.navigation_tree.select_item(navtreedata, True) #changed this to "true" so it will always jump to the selected verse.
         
-        self.options_panel.display_attributes("verseClick", {"verse": "This part of the code was never implemented", "ref": combineVRefs(data[0],data[1])}, False)
-        self.options_panel.reset_scrollregion(None)
+        self.tagger_panel.display_attributes("verseClick", {"verse": "This part of the code was never implemented", "ref": combineVRefs(data[0],data[1])}, False)
+        self.tagger_panel.reset_scrollregion(None)
         #self.scripture_panel.display_chapter(reset_scrollbar = True)
         #self.scripture_panel.reset_scrollregion()
         
@@ -168,7 +168,7 @@ class BibleTaggerApp:
         #this function will either focus a tag or a verse, depending on what was clicked in the secondary window
         if item == "tagClick":
             data = {'ref':clickdata, 'id':None}
-            self.options_panel.display_attributes(item, data)
+            self.tagger_panel.display_attributes(item, data)
         else: #"verseClick"
             #Scrollreset is True so that, if we're clicking back and forth between verses in the same chapter, it will just go ahead and highlight them.
             self.options_callback(clickdata, True)
@@ -188,7 +188,7 @@ class NavigationTree:
         self.marked_chapters = []
 
         self.secondary_master = self.master
-        self.secondary_window = SecondaryWindow(self.secondary_master, self.dbManager_callback, open_db_file)
+        self.db_manager = DBManager(self.secondary_master, self.dbManager_callback, open_db_file)
         
         # Create a frame for the button and tree
         self.tree_frame = ttk.Frame(self.paned_window)
@@ -322,9 +322,9 @@ class NavigationTree:
             else:
                 print("Invalid file! It's gotta be a json file. Funny thing about this: you could use this program to make notes about any kind of JSON data which is organized in a way similar to a supported Bible JSON file.")
         else:#subsequent clicks, open the db manager
-            #if self.secondary_window is None or not self.secondary_window.winfo_exists():
+            #if self.db_manager is None or not self.db_manager.winfo_exists():
                 # Create the secondary window if it doesn't exist or has been destroyed
-            self.secondary_window.show(self.dbManager_callback, open_db_file);
+            self.db_manager.show(self.dbManager_callback, open_db_file);
 
 class ScripturePanel:
     def __init__(self, master, paned_window, canvas_callback):
@@ -715,7 +715,7 @@ class MultiLineInputDialog(simpledialog.Dialog):
     def apply(self):
         self.result = self.text_input.get("1.0", tk.END).strip()
 
-class OptionsPanel:
+class TaggerPanel:
     def __init__(self, master, paned_window, options_callback, cause_canvas_to_refresh, update_tree_colors):
         self.options_callback = options_callback
         self.cause_canvas_to_refresh = cause_canvas_to_refresh
