@@ -300,11 +300,11 @@ class NavigationTree:
             #clicking white space on the list throws this error. Just don't update the item.
             pass 
 
-    def load_json(self, file_path):
+    def load_json(self, bible_file_path):
         global data_model
-        with open(file_path, 'r') as file:
-            content = file.read()
-        data_model = bibledb_Lib.getBibleData(content)
+        with open(bible_file_path, 'r') as file:
+            bible_file_content = file.read()
+            data_model = bibledb_Lib.getBibleData(bible_file_content)
         #print("dumping output from open_file_dialog")
         #print(data_model)
         self.populate_tree(data_model, '')

@@ -155,9 +155,9 @@ def tagNoteEntry(tag_name, note_data):
 # so verses are accessed like this:
 # bibleData['Psalm'][19][7]
 
-def getBibleData(bible_file_path):
+def getBibleData(bible_file_content):
     # Load JSON data
-    data = json.loads(bible_file_path)
+    data = json.loads(bible_file_content)
 
     # Initialize the result dictionary
     bibleData = {}
