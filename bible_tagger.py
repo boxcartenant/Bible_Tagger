@@ -3,14 +3,12 @@ from tkinter import ttk
 from tkinter import filedialog
 import bibledb_lib
 from tkinter.font import Font
-from tkinter import Misc
 from tkinter import simpledialog
 from tkinter import messagebox
 from bibledb_manager import DBManager
 from bibledb_manager import TagInputDialog, combineVRefs
-import os, re
+import os
 import configparser
-import sys
 
 textlinegap = 2
 windowsize = "1000x600"

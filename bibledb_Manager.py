@@ -1,12 +1,11 @@
 import tkinter as tk
-from tkinter import ttk, messagebox, font, filedialog, simpledialog, Misc, StringVar, OptionMenu
+from tkinter import ttk, messagebox, filedialog, simpledialog, Misc, StringVar, OptionMenu
 import bibledb_lib as bdblib
 from tkinter.font import Font
 from openpyxl import Workbook
-import os, itertools, time, math, csv
-from collections import defaultdict, deque, Counter
+import os
+from collections import defaultdict
 import numpy as np
-import networkx as nx
 import numpy as np
 import matplotlib.pyplot as plt
 
