@@ -5,8 +5,8 @@ import bibledb_lib
 from tkinter.font import Font
 from tkinter import simpledialog
 from tkinter import messagebox
-from bibledb_manager import DBManager
-from bibledb_manager import TagInputDialog, combineVRefs
+from bibledb_explorer import DBExplorer
+from bibledb_explorer import TagInputDialog, combineVRefs
 import os
 import configparser
 
@@ -44,7 +44,7 @@ class BibleTaggerApp:
         self.paned_window = ttk.PanedWindow(self.master, orient="horizontal")
         self.paned_window.pack(fill="both", expand=True)
 
-        self.navigation_tree = NavigationTree(self.master, self.paned_window, self.tree_callback, self.dbManager_callback)
+        self.navigation_tree = NavigationTree(self.master, self.paned_window, self.tree_callback, self.db_explorer_callback)
         self.scripture_panel = ScripturePanel(self.master, self.paned_window, self.canvas_callback)
         self.tagger_panel = TaggerPanel(self.master, self.paned_window, self.options_callback, self.cause_canvas_to_refresh, self.update_tree_colors)
 
@@ -162,7 +162,7 @@ class BibleTaggerApp:
         #self.scripture_panel.display_chapter(reset_scrollbar = True)
         #self.scripture_panel.reset_scrollregion()
         
-    def dbManager_callback(self, clickdata = None, item = "tagClick"):
+    def db_explorer_callback(self, clickdata = None, item = "tagClick"):
         #this function will either focus a tag or a verse, depending on what was clicked in the secondary window
         if item == "tagClick":
             data = {'ref':clickdata, 'id':None}
@@ -174,7 +174,7 @@ class BibleTaggerApp:
 
 class NavigationTree:
     #leftmost panel on the main window
-    def __init__(self, master, paned_window, tree_callback, dbManager_callback, weight=1):
+    def __init__(self, master, paned_window, tree_callback, db_explorer_callback, weight=1):
         self.master = master
         global data_model
         self.data_model_loaded = False
@@ -182,11 +182,11 @@ class NavigationTree:
         self.tree_item_data = {}
         self.treeFont = Font()
         self.tree_callback = tree_callback
-        self.dbManager_callback = dbManager_callback
+        self.db_explorer_callback = db_explorer_callback
         self.marked_chapters = []
 
         self.secondary_master = self.master
-        self.db_manager = DBManager(self.secondary_master, self.dbManager_callback, open_db_file)
+        self.db_explorer = DBExplorer(self.secondary_master, self.db_explorer_callback, open_db_file)
         
         # Create a frame for the button and tree
         self.tree_frame = ttk.Frame(self.paned_window)
@@ -307,7 +307,7 @@ class NavigationTree:
         #print(data_model)
         self.populate_tree(data_model, '')
         self.data_model_loaded = True
-        self.open_button.configure(text = "Manage DB")
+        self.open_button.configure(text = "Explore DB")
     
     def open_file_dialog(self):
         #button to open a Bible file
@@ -319,10 +319,10 @@ class NavigationTree:
                 self.load_json(file_path)
             else:
                 print("Invalid file! It's gotta be a json file. Funny thing about this: you could use this program to make notes about any kind of JSON data which is organized in a way similar to a supported Bible JSON file.")
-        else:#subsequent clicks, open the db manager
-            #if self.db_manager is None or not self.db_manager.winfo_exists():
+        else:#subsequent clicks, open the db explorer
+            #if self.db_explorer is None or not self.db_explorer.winfo_exists():
                 # Create the secondary window if it doesn't exist or has been destroyed
-            self.db_manager.show(self.dbManager_callback, open_db_file);
+            self.db_explorer.show(self.db_explorer_callback, open_db_file);
 
 class ScripturePanel:
     def __init__(self, master, paned_window, canvas_callback):
