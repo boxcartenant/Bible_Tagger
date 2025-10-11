@@ -47,7 +47,7 @@ class BibleTaggerApp:
         self.paned_window.pack(fill="both", expand=True)
 
         self.navigation_tree = NavigationTree(self.master, self.paned_window, self.tree_callback, self.dbManager_callback)
-        self.canvas_view = CanvasView(self.master, self.paned_window, self.canvas_callback)
+        self.scripture_panel = ScripturePanel(self.master, self.paned_window, self.canvas_callback)
         self.options_panel = OptionsPanel(self.master, self.paned_window, self.options_callback, self.cause_canvas_to_refresh, self.update_tree_colors)
 
         self.paned_window.bind("<B1-Motion>", self.on_sash_drag)
@@ -56,8 +56,8 @@ class BibleTaggerApp:
         #fixing the scrollbar behavior
         self.active_panel = None
         self.master.bind("<MouseWheel>", self.scroll_active_panel)
-        self.canvas_view.canvas.bind("<Enter>", self.set_active_panel)
-        self.canvas_view.canvas.bind("<Leave>", self.clear_active_panel)
+        self.scripture_panel.canvas.bind("<Enter>", self.set_active_panel)
+        self.scripture_panel.canvas.bind("<Leave>", self.clear_active_panel)
         self.options_panel.canvas.bind("<Enter>", self.set_active_panel)
         self.options_panel.canvas.bind("<Leave>", self.clear_active_panel)
         #self.options_panel.canvas_frame.bind("<MouseWheel>", self.scroll_active_panel)
@@ -97,9 +97,9 @@ class BibleTaggerApp:
             self.navigation_tree.tree.column("#0", width=new_sash_position)
         #elif the moved sash is near the options panel (right), update the options panel
         elif self.paned_window.sashpos(1) - 10 < event.x < self.paned_window.sashpos(1) + 10:
-            self.canvas_view.canvas_callback(None, None)
+            self.scripture_panel.canvas_callback(None, None)
         #in both cases, we need to update the canvas where the verses are (middle)
-        self.canvas_view.display_chapter()
+        self.scripture_panel.display_chapter()
         self.options_panel.display_attributes()
 
         #To Do: account for situations where the user puts the sashes together.
@@ -116,9 +116,9 @@ class BibleTaggerApp:
     def tree_callback(self, item, data, reset_scrollbar):
         # handle canvas-related actions caused by tree interactions here
         # You can call the CanvasView methods to update the canvas
-        # For example, self.canvas_view.display_attributes(attributes)
-        self.canvas_view.display_chapter(item, data, reset_scrollbar)
-        #self.canvas_view.reset_scrollregion(item)
+        # For example, self.scripture_panel.display_attributes(attributes)
+        self.scripture_panel.display_chapter(item, data, reset_scrollbar)
+        #self.scripture_panel.reset_scrollregion(item)
         
 
     def canvas_callback(self, item, data, shift_key = False):
@@ -131,7 +131,7 @@ class BibleTaggerApp:
         1;
 
     def cause_canvas_to_refresh(self):
-        self.canvas_view.display_chapter()
+        self.scripture_panel.display_chapter()
     
     def options_callback(self, data, scrollreset = False):
         #this is used when you are looking at tag xref data and you click a verse associated with the tag.
@@ -140,14 +140,14 @@ class BibleTaggerApp:
         start = bibledb_Lib.parseVerseReference(data[0])
         end = bibledb_Lib.parseVerseReference(data[1])
 
-        checkbook = self.canvas_view.selected_start_b #capture this, so we won't reset the canvas view if we're not moving chapters.
+        checkbook = self.scripture_panel.selected_start_b #capture this, so we won't reset the canvas view if we're not moving chapters.
         
-        self.canvas_view.selected_start_b = bibledb_Lib.book_proper_names[start['sb']]
-        self.canvas_view.selected_end_b = bibledb_Lib.book_proper_names[end['eb']]
-        self.canvas_view.selected_start_c = start['sc']
-        self.canvas_view.selected_end_c = end['ec']
-        self.canvas_view.selected_start_v = start['sv']
-        self.canvas_view.selected_end_v = end['ev']
+        self.scripture_panel.selected_start_b = bibledb_Lib.book_proper_names[start['sb']]
+        self.scripture_panel.selected_end_b = bibledb_Lib.book_proper_names[end['eb']]
+        self.scripture_panel.selected_start_c = start['sc']
+        self.scripture_panel.selected_end_c = end['ec']
+        self.scripture_panel.selected_start_v = start['sv']
+        self.scripture_panel.selected_end_v = end['ev']
 
         #navigate to the first verse in the range
         navtreedata = "/"+bibledb_Lib.book_proper_names[start['sb']]+"/Ch "+start['sc']
@@ -155,14 +155,14 @@ class BibleTaggerApp:
         #if not scrollreset:
             #Sometimes if you are clicking a verse in tag data for a chapter you already have open, you'll already be looking at that verse
             # and have scrolled to a place you want. In that case, maybe you don't want it to reset....
-            #scrollreset = checkbook != self.canvas_view.selected_start_b
+            #scrollreset = checkbook != self.scripture_panel.selected_start_b
         #self.navigation_tree.select_item(navtreedata, scrollreset)
         self.navigation_tree.select_item(navtreedata, True) #changed this to "true" so it will always jump to the selected verse.
         
         self.options_panel.display_attributes("verseClick", {"verse": "This part of the code was never implemented", "ref": combineVRefs(data[0],data[1])}, False)
         self.options_panel.reset_scrollregion(None)
-        #self.canvas_view.display_chapter(reset_scrollbar = True)
-        #self.canvas_view.reset_scrollregion()
+        #self.scripture_panel.display_chapter(reset_scrollbar = True)
+        #self.scripture_panel.reset_scrollregion()
         
     def dbManager_callback(self, clickdata = None, item = "tagClick"):
         #this function will either focus a tag or a verse, depending on what was clicked in the secondary window
@@ -326,7 +326,7 @@ class NavigationTree:
                 # Create the secondary window if it doesn't exist or has been destroyed
             self.secondary_window.show(self.dbManager_callback, open_db_file);
 
-class CanvasView:
+class ScripturePanel:
     def __init__(self, master, paned_window, canvas_callback):
         self.canvas_callback = canvas_callback
         self.master = master
