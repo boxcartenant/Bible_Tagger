@@ -1170,6 +1170,18 @@ if __name__ == "__main__":
             jsonpath = None
 
         try:
+            # Check if bdb file exists, if not create it with proper tables
+            if bdbpath and not os.path.exists(bdbpath):
+                print(f"BDB file not found at {bdbpath}. Creating new database...")
+                # Create directory if it doesn't exist
+                bdb_dir = os.path.dirname(bdbpath)
+                if bdb_dir and not os.path.exists(bdb_dir):
+                    os.makedirs(bdb_dir)
+                # Create empty file and initialize database tables
+                with open(bdbpath, 'w') as f:
+                    f.write("")
+                bibledb_Lib.makeDB(bdbpath)
+                print(f"Created new database at {bdbpath}")
             bta.load_bdb(bdbpath)
         except Exception as e:
             print("Failed to load BDB file from config:", e)
