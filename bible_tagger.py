@@ -1019,6 +1019,15 @@ class TaggerPanel:
             self.canvas.create_text(button_x+textelbowroom, y_offset+textelbowroom, text=buttonText, anchor=tk.NW, font=self.canvasFont, tags='load_db_button')
             self.canvas.tag_bind('load_db_button', '<Button-1>', self.load_db)
             button_x += button_width + button_spacing
+            
+            # Merge DBs button (below Load DB)
+            merge_button_x = x_offset
+            merge_y_offset = y_offset + textlineheight + 2*textelbowroom + button_spacing
+            buttonText = "Merge DB..."
+            button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
+            self.canvas.create_rectangle(merge_button_x, merge_y_offset, merge_button_x+button_width, merge_y_offset + textlineheight + 2*textelbowroom, fill='snow', tags='merge_dbs_button')
+            self.canvas.create_text(merge_button_x+textelbowroom, merge_y_offset+textelbowroom, text=buttonText, anchor=tk.NW, font=self.canvasFont, tags='merge_dbs_button')
+            self.canvas.tag_bind('merge_dbs_button', '<Button-1>', self.merge_dbs)
     
             # Save DB button
             buttonText = "Save DB"
@@ -1035,7 +1044,8 @@ class TaggerPanel:
             self.canvas.create_text(button_x+textelbowroom, y_offset+textelbowroom, text=buttonText, anchor=tk.NW, font=self.canvasFont, tags='save_db_as_button')
             self.canvas.tag_bind('save_db_as_button', '<Button-1>', self.save_db_as)
 
-            y_offset += 10 + textlineheight + 2*textelbowroom
+            # Add extra spacing for the second row of buttons (Merge DBs button)
+            y_offset += 10 + 2*(textlineheight + 2*textelbowroom) + button_spacing
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
 
     def tag_verse_click(self, event, payload):
@@ -1126,7 +1136,6 @@ class TaggerPanel:
         self.update_tree_colors()
         
     def load_db(self, event):
-        print("trying to load a db")
         # Implement your logic to open the browse window and load the database
         file_path = filedialog.askopenfilename(defaultextension=".bdb", filetypes=[("Sqlite Bible Files", "*.bdb"), ("All files", "*.*")])
         if file_path:
@@ -1159,6 +1168,19 @@ class TaggerPanel:
             self.display_attributes()
             self.cause_canvas_to_refresh()
             print(f"Selected or created file: {file_path}")
+    
+    def merge_dbs(self, event):
+        # TODO: Implement database merge functionality
+        # This should allow user to select a second database file and merge its contents
+        # into the currently open database
+        file_path = filedialog.askopenfilename(defaultextension=".bdb", filetypes=[("Sqlite Bible Files", "*.bdb"), ("All files", "*.*")])
+        if file_path:
+            if file_path == open_db_file:
+                print("You can't merge a database into itself!")
+            elif file_path[-4:] == ".bdb":
+                bibledb_lib.merge_dbs(open_db_file, file_path)
+            else:
+                print("I'm not opening that. It's gotta be a SQLITE database file with the extension \".bdb\"")
 
 
 

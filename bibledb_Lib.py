@@ -32,6 +32,10 @@ def qualifyBook(book_name):
         
     return None
 
+def merge_dbs(current_db_path, new_db_path):
+    print("Merge DBs functionality not yet implemented")
+    pass
+
 def normalize_vref(passage):
     # takes a verse reference in the form (1,1,1,2,2,2) like what we get from the verses db
     # and returns its normalized string name (Genesis 1:1-Exodus 2:2)
