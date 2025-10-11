@@ -1018,11 +1018,21 @@ class OptionsPanel:
 
             y_offset += 10 + textlineheight + 2*textelbowroom
     
-            buttonText = "Save or Make New DB"
+            # Save button
+            buttonText = "Save DB"
             button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
             self.canvas.create_rectangle(x_offset, y_offset, x_offset+button_width,y_offset + textlineheight + 2*textelbowroom, fill='snow', tags='save_db_button')
             self.canvas.create_text(x_offset+textelbowroom, y_offset+textelbowroom, text=buttonText, anchor=tk.NW, font=self.canvasFont, tags='save_db_button')
-            self.canvas.tag_bind('save_db_button', '<Button-1>', self.saveas_db)
+            self.canvas.tag_bind('save_db_button', '<Button-1>', self.save_db)
+
+            y_offset += 10 + textlineheight + 2*textelbowroom
+            
+            # Save As button
+            buttonText = "Save DB As..."
+            button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
+            self.canvas.create_rectangle(x_offset, y_offset, x_offset+button_width,y_offset + textlineheight + 2*textelbowroom, fill='snow', tags='save_db_as_button')
+            self.canvas.create_text(x_offset+textelbowroom, y_offset+textelbowroom, text=buttonText, anchor=tk.NW, font=self.canvasFont, tags='save_db_as_button')
+            self.canvas.tag_bind('save_db_as_button', '<Button-1>', self.save_db_as)
 
             y_offset += 10 + textlineheight + 2*textelbowroom
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
@@ -1125,7 +1135,17 @@ class OptionsPanel:
             else:
                 print("I'm not opening that. It's gotta be a SQLITE database file with the extension \".bdb\"")
 
-    def saveas_db(self, event):
+    def save_db(self, event):
+        # Save to the currently open database file
+        global open_db_file
+        if open_db_file:
+            print(f"Database auto-saves. Current DB: {open_db_file}")
+            messagebox.showinfo("Save", f"Database is already saved.\nCurrent file: {open_db_file}")
+        else:
+            print("No database file is currently open. Use 'Save As...' to create a new one.")
+            messagebox.showwarning("No Database", "No database file is currently open.\nUse 'Save As...' to create a new database.")
+    
+    def save_db_as(self, event):
         file_path = filedialog.asksaveasfilename(defaultextension=".bdb", filetypes=[("Sqlite Bible Files", "*.bdb"), ("All files", "*.*")])
 
         if file_path:
