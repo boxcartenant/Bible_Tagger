@@ -36,7 +36,7 @@ def wrapText(text, width, font):
     return lines
 
 
-class MainWindow:
+class BibleTaggerApp:
     def __init__(self, master):
         self.master = master
         global bible_data, windowsize
@@ -1147,8 +1147,9 @@ if __name__ == "__main__":
     
     root = tk.Tk()
     root.title("Bible Tagger")
+    root.iconbitmap("./bibletaggericon.ico")
 
-    main_window = MainWindow(root)
+    bta = BibleTaggerApp(root)
 
     config_filename = "config.cfg"
     if not os.path.exists(config_filename):
@@ -1163,16 +1164,15 @@ if __name__ == "__main__":
         bdbpath = cfg.get('DEFAULT', 'bdbpath', fallback=None)
 
         try:
-            main_window.load_json(jsonpath)
+            bta.load_json(jsonpath)
         except Exception as e:
             print("Failed to load JSON file from config:", e)
             jsonpath = None
 
         try:
-            main_window.load_bdb(bdbpath)
+            bta.load_bdb(bdbpath)
         except Exception as e:
             print("Failed to load BDB file from config:", e)
             bdbpath = None
-    #main_window = MainWindow(root, data_model)
 
     root.mainloop()
