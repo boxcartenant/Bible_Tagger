@@ -920,14 +920,14 @@ class TaggerPanel:
                 #tag delete "X" button.
                 #only do this if this is not a synonym
                 if tag not in synonymlist:
-                    tag_delete_binder = "Delete_" + str(tag['id'])
+                    tag_delete_binder = "Delete_" + str(tag['tag_id'])
                     tagx += 1 #making a thicker line between tag groups
                     self.canvas.create_rectangle(x_offset+tagx, y_offset, x_offset+tagx+xb_width, y_offset+textlineheight+textlinegap*2, fill='coral1', tags=tag_delete_binder)
                     self.canvas.create_text(x_offset+tagx, y_offset+textlinegap, text=" X", anchor=tk.NW, font=self.canvasFont, tags=tag_delete_binder)
                     self.canvas.tag_bind(tag_delete_binder, '<Button-1>', lambda event, verse=self.current_data['ref'], mytag=tag['tag'], reftype = type_to_get: self.delete_tag(event, verse, mytag, reftype))
                     tagx += xb_width
                 #actual tag display
-                tag_display_binder = "Display_" + str(tag['id'])
+                tag_display_binder = "Display_" + str(tag['tag_id'])
                 self.canvas.create_rectangle(x_offset+tagx, y_offset, x_offset+tagx+tag_width, y_offset+textlineheight+textlinegap*2, fill='azure', tags=tag_display_binder)
 
                 #if there's a note on this tag, put a little triangle on the corner of the tag's button
@@ -945,7 +945,7 @@ class TaggerPanel:
                     )
                 self.canvas.create_text(x_offset+tagx, y_offset+textlinegap, text=" " + tag['tag'], anchor=tk.NW, font=self.canvasFont, tags=tag_display_binder)
                 #button event to show tag details in this panel...
-                self.canvas.tag_bind(tag_display_binder, '<Button-1>', lambda event, item="tagClick", data = {'ref':tagname, 'id':tag['id']} : self.display_attributes(item, data))
+                self.canvas.tag_bind(tag_display_binder, '<Button-1>', lambda event, item="tagClick", data = {'ref':tagname, 'id':tag['tag_id']} : self.display_attributes(item, data))
                 tagx += tag_width
 
             y_offset += textlineheight + textlinegap*3 + 10
@@ -975,15 +975,15 @@ class TaggerPanel:
                             verses.append(another_verse)
 
                 
-                try:
+                #try:
                     # If the user makes a DB using a version of the Bible that has the apocrypha, and then tries to pull notes about Revelation from that DB while he has a protestant Bible loaded...
                     #    then the reference to bibledb_lib.book_proper_names[] will throw an index out of range error.
                     #    I am making this tool primarily for myself to use, and I don't include the apocrypha in my Bible, so I don't plan to fix this.
-                    verses.sort(key=lambda r: (r["start_book"], r["start_chapter"], r["start_verse"]))
-                    self.verse_xref_list = [(bibledb_lib.book_proper_names[x["start_book"]]+" "+str(x["start_chapter"])+":"+str(x["start_verse"]), bibledb_lib.book_proper_names[x["end_book"]]+" "+str(x["end_chapter"])+":"+str(x["end_verse"])) for x in verses]
-                except:
-                    self.verse_xref_list = []
-                    print("Failed to get the verse references for that tag. This error might occur if your DB was made with a version of the Bible that had different books from the version you're currently using. For example, if the DB was made including the apocrypha, but your current Bible doesn't have it.")
+                verses.sort(key=lambda r: (r["start_book"], r["start_chapter"], r["start_verse"]))
+                self.verse_xref_list = [(bibledb_lib.book_proper_names[x["start_book"]]+" "+str(x["start_chapter"])+":"+str(x["start_verse"]), bibledb_lib.book_proper_names[x["end_book"]]+" "+str(x["end_chapter"])+":"+str(x["end_verse"])) for x in verses]
+                #except:
+                    #self.verse_xref_list = []
+                    #print("Failed to get the verse references for that tag. This error might occur if your DB was made with a version of the Bible that had different books from the version you're currently using. For example, if the DB was made including the apocrypha, but your current Bible doesn't have it.")
                 tagx = 0
                 for xverse in self.verse_xref_list:
                     itemText = combineVRefs(xverse[0],xverse[1])
