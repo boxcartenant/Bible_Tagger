@@ -50,9 +50,11 @@ class BibleTaggerApp:
         self.paned_window = ttk.PanedWindow(self.master, orient="horizontal")
         self.paned_window.pack(fill="both", expand=True)
 
-        self.navigation_tree = NavigationTree(self.master, self.paned_window, self.tree_callback, self.db_explorer_callback)
-        self.scripture_panel = ScripturePanel(self.master, self.paned_window, self.canvas_callback)
-        self.tagger_panel = TaggerPanel(self.master, self.paned_window, self.options_callback, self.cause_canvas_to_refresh, self.update_tree_colors)
+        self.db_explorer = DBExplorer(self.master, self.db_explorer_callback, open_db_file)
+
+        self.navigation_tree = NavigationTree(self)
+        self.scripture_panel = ScripturePanel(self)
+        self.tagger_panel = TaggerPanel(self)
 
         self.paned_window.bind("<B1-Motion>", self.on_sash_drag)
         self.paned_window.bind("<ButtonRelease-1>", self.on_sash_release)
@@ -99,10 +101,84 @@ class BibleTaggerApp:
                     f.write("")
                 bibledb_lib.makeDB(bdbpath)
                 print(f"Created new database at {bdbpath}")
-            self.tagger_panel.load_bdb(bdbpath, True)
+            self.load_bdb(bdbpath, True)
         except Exception as e:
             print("Failed to load BDB file from config:", e)
             bdbpath = None
+
+    ##### DB LOAD SAVE
+    def load_bdb(self, file_path, no_verse = False):
+        # Store the open file in a global variable
+        
+        global open_db_file, config_filename, cfg
+        open_db_file = file_path
+        if not no_verse:
+            # item = "verseClick" if a verse was clicked
+            # data = {"verse": the verse text, "ref": the verse reference}
+            try:
+                self.tagger_panel.display_attributes(item = "verseClick", data={"verse":"", "ref": "Deuteronomy 4:2"})
+            except:
+                pass
+        else:
+            self.tagger_panel.display_attributes()
+        self.cause_canvas_to_refresh()
+        self.update_tree_colors()
+
+        if cfg.getboolean('DEFAULT', 'use_last_db', fallback=False):
+            cfg['DEFAULT']['bdb_path'] = file_path
+            with open(config_filename, 'w') as configfile:
+                cfg.write(configfile)
+        
+    def load_db(self, event):
+        # Implement your logic to open the browse window and load the database
+        file_path = filedialog.askopenfilename(defaultextension=".bdb", filetypes=[("Sqlite Bible Files", "*.bdb"), ("All files", "*.*")])
+        if file_path:
+            if file_path[-4:] == ".bdb":
+                print(f"Loaded DB: {file_path}")
+                self.load_bdb(file_path)
+            else:
+                print("I'm not opening that. It's gotta be a SQLITE database file with the extension \".bdb\"")
+
+    def new_db(self, event):
+        global open_db_file
+
+        file_path = filedialog.asksaveasfilename(defaultextension=".bdb", filetypes=[("Sqlite Bible Files", "*.bdb"), ("All files", "*.*")])
+
+        if file_path:
+            with open(file_path, 'w') as f:
+                f.write("")
+                bibledb_lib.makeDB(file_path)
+            self.load_bdb(file_path)
+    
+    def save_db_as(self, event):
+        global open_db_file
+
+        file_path = filedialog.asksaveasfilename(defaultextension=".bdb", filetypes=[("Sqlite Bible Files", "*.bdb"), ("All files", "*.*")])
+
+        if file_path:
+            if open_db_file is None:
+                with open(file_path, 'w') as f:
+                    f.write("")
+                    bibledb_lib.makeDB(file_path)
+            else:
+                bibledb_lib.copy_db(open_db_file, file_path)
+            self.load_bdb(file_path)
+            print(f"Database saved as: {file_path}")
+    
+    def merge_dbs(self, event):
+        # merges a second database into current database
+        file_path = filedialog.askopenfilename(defaultextension=".bdb", filetypes=[("Sqlite Bible Files", "*.bdb"), ("All files", "*.*")])
+        if file_path:
+            if file_path == open_db_file:
+                print("You can't merge a database into itself!")
+            elif not os.path.exists(file_path):
+                print("That file doesn't exist!")
+            elif file_path[-4:] == ".bdb":
+                bibledb_lib.merge_dbs(open_db_file, file_path)
+                self.cause_canvas_to_refresh()
+                self.update_tree_colors()
+            else:
+                print("I'm not opening that. It's gotta be a SQLITE database file with the extension \".bdb\"")
 
     def set_active_panel(self, event):
         # Set the active panel to the widget under the mouse
@@ -258,40 +334,50 @@ class BibleTaggerApp:
 
 class NavigationTree:
     #leftmost panel on the main window
-    def __init__(self, master, paned_window, tree_callback, db_explorer_callback, weight=1):
-        self.master = master
+    def __init__(self, bta, weight=1):
         global bible_data
+        self.bta = bta
         self.bible_data_loaded = False
-        self.paned_window = paned_window
         self.tree_item_data = {}
         self.treeFont = Font()
-        self.tree_callback = tree_callback
-        self.db_explorer_callback = db_explorer_callback
         self.marked_chapters = []
 
-        self.secondary_master = self.master
-        self.db_explorer = DBExplorer(self.secondary_master, self.db_explorer_callback, open_db_file)
-        
-        # Create a frame for the button and tree
-        self.tree_frame = ttk.Frame(self.paned_window)
+        # Create a frame for the tree
+        self.tree_frame = ttk.Frame(self.bta.paned_window)
         self.tree_frame.grid(row=0, column=0, sticky="nsew")
-        self.tree_frame.grid_rowconfigure(1, weight=1) #tree stretches to bottom of window
-
-        # Create a button for opening the file dialog
-        self.open_button = tk.Button(self.tree_frame, text="Open Bible json File", command=self.open_file_dialog)
-        self.open_button.grid(row=0, column=0, sticky="nsew") #button to open new files
+        self.tree_frame.grid_rowconfigure(0, weight=1) #tree stretches to bottom of window
 
         # Create a tree view
         self.tree = ttk.Treeview(self.tree_frame, show='tree')
-        self.tree.grid(row=1, column=0, sticky="nsew")
+        self.tree.grid(row=0, column=0, sticky="nsew")
 
         vsb = ttk.Scrollbar(self.tree_frame, orient="vertical", command=self.tree.yview)
         hsb = ttk.Scrollbar(self.tree_frame, orient="horizontal", command=self.tree.xview)
-        vsb.grid(row=1, column=1, sticky="ns")
-        hsb.grid(row=2, column=0, sticky="ew")
+        vsb.grid(row=0, column=1, sticky="ns")
+        hsb.grid(row=1, column=0, sticky="ew")
         self.tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
         
-        self.paned_window.add(self.tree_frame)
+        # Create a frame for DB buttons below the tree
+        self.db_buttons_frame = ttk.Frame(self.tree_frame)
+        self.db_buttons_frame.grid(row=2, column=0, columnspan=2, sticky="ew", pady=5)
+        
+        # Create DB buttons
+        self.load_db_button = tk.Button(self.db_buttons_frame, text="Load DB", command=self.bta.load_db)
+        self.load_db_button.grid(row=0, column=0, sticky="ew", padx=2)
+
+        self.new_db_button = tk.Button(self.db_buttons_frame, text="New DB", command=self.bta.new_db)
+        self.new_db_button.grid(row=0, column=1, sticky="ew", padx=2)
+
+        self.save_db_as_button = tk.Button(self.db_buttons_frame, text="Save DB As...", command=self.bta.save_db_as)
+        self.save_db_as_button.grid(row=0, column=2, sticky="ew", padx=2)
+
+        self.merge_dbs_button = tk.Button(self.db_buttons_frame, text="Merge DB...", command=self.bta.merge_dbs)
+        self.merge_dbs_button.grid(row=1, column=0, columnspan=2, sticky="ew", padx=2, pady=2)
+
+        self.explore_db_button = tk.Button(self.db_buttons_frame, text="Explore DB", command=lambda: self.bta.db_explorer.show(self.bta.db_explorer_callback, open_db_file))
+        self.explore_db_button.grid(row=1, column=2, sticky="ew", padx=2, pady=2)
+        
+        self.bta.paned_window.add(self.tree_frame)
         self.tree.bind("<ButtonRelease-1>", self.on_tree_item_click)
         self.tree.bind("<KeyRelease-Up>", self.on_tree_item_click)
         self.tree.bind("<KeyRelease-Down>", self.on_tree_item_click)
@@ -376,7 +462,7 @@ class NavigationTree:
             item_data = self.tree_item_data.get(item_id)
             #print("sending..." + str(attributes))
             # Use the callback in the NavigationTree class to handle the canvas update
-            self.tree_callback(item_id, item_data, reset_scroll_region)
+            self.bta.tree_callback(item_id, item_data, reset_scroll_region)
         except IndexError:
             print("failed in on_tree_item_click")
             #clicking white space on the list throws this error. Just don't update the item.
@@ -391,7 +477,7 @@ class NavigationTree:
         #print(bible_data)
         self.populate_tree(bible_data, '')
         self.bible_data_loaded = True
-        self.open_button.configure(text = "Explore DB")
+        self.explore_db_button.configure(text = "Explore DB")
     
     def open_file_dialog(self):
         #button to open a Bible file
@@ -409,17 +495,15 @@ class NavigationTree:
             self.db_explorer.show(self.db_explorer_callback, open_db_file);
 
 class ScripturePanel:
-    def __init__(self, master, paned_window, canvas_callback):
-        self.canvas_callback = canvas_callback
-        self.master = master
+    def __init__(self, bta):
         global bible_data, open_db_file
-        self.paned_window = paned_window
+        self.bta = bta
         self.canvasFont = Font(size = 10)
         self.italicFont = Font(size = 10, slant = 'italic')
         self.boldFont = Font(size = 10, weight = 'bold')
         self.italicunderlineFont = Font(size=10, slant='italic', underline=True)
 
-        self.canvas_frame = ttk.Frame(self.paned_window)
+        self.canvas_frame = ttk.Frame(self.bta.paned_window)
         self.canvas_frame.grid(row=0, column=1, sticky="nsew")
         self.canvas_frame.grid_rowconfigure(0, weight=1)
         self.canvas_frame.grid_columnconfigure(0, weight=1)
@@ -450,7 +534,7 @@ class ScripturePanel:
         self.selected_start_b = ""
         self.selected_end_b = ""
 
-        self.paned_window.add(self.canvas_frame)
+        self.bta.paned_window.add(self.canvas_frame)
 
         # Draw on the canvas (e.g., lines, rectangles, text, images)
         #self.canvas.create_line(50, 50, 200, 50, fill="blue", width=2)
@@ -472,7 +556,7 @@ class ScripturePanel:
         
         # Get the text associated with the clicked object
         #------Send tag data to the second window for cross referencing
-        self.canvas_callback("verseClick", {"verse": item_id, "ref": scopename}, event.state & (1<<0))
+        self.bta.canvas_callback("verseClick", {"verse": item_id, "ref": scopename}, event.state & (1<<0))
         
         #print("ID:"+ str(item_id), "\nSCOPE:"+str(scopename), "\nVV:"+str(vv))
         splitscope = scopename.split(" ")
@@ -599,7 +683,7 @@ class ScripturePanel:
             self.canvas.create_text(x_offset, y_offset, text=str(thisbook)+" Chapter "+str(thischapter), anchor=tk.W, font = self.boldFont)
             y_offset += boldlineheight + textlinegap*2
             
-            verse_area_width = self.paned_window.sashpos(1) - self.paned_window.sashpos(0) - self.scrollbar_width - textelbowroom*2
+            verse_area_width = self.bta.paned_window.sashpos(1) - self.bta.paned_window.sashpos(0) - self.scrollbar_width - textelbowroom*2
             v = 1
             c = int(item_hierarchy[-1].replace("Ch ",""))
             b = int(bibledb_lib.getBookIndex(item_hierarchy[-2]))
@@ -798,13 +882,9 @@ class MultiLineInputDialog(simpledialog.Dialog):
         self.result = self.text_input.get("1.0", tk.END).strip()
 
 class TaggerPanel:
-    def __init__(self, master, paned_window, options_callback, cause_canvas_to_refresh, update_tree_colors):
-        self.options_callback = options_callback
-        self.cause_canvas_to_refresh = cause_canvas_to_refresh
-        self.update_tree_colors = update_tree_colors
-        self.master = master
+    def __init__(self, bta):
         global bible_data, open_db_file
-        self.paned_window = paned_window
+        self.bta = bta
         self.canvasFont = Font(size = 10)
         self.italicFont = Font(size = 10, slant = 'italic')
         self.boldFont = Font(size = 10, weight = 'bold')
@@ -814,7 +894,7 @@ class TaggerPanel:
         global open_db_file
 
 
-        self.canvas_frame = ttk.Frame(self.paned_window)
+        self.canvas_frame = ttk.Frame(self.bta.paned_window)
         self.canvas_frame.grid(row=0, column=1, sticky="nsew")
         self.canvas_frame.grid_rowconfigure(0, weight=1)
         self.canvas_frame.grid_columnconfigure(0, weight=1)
@@ -837,7 +917,7 @@ class TaggerPanel:
         self.v_scrollbar.grid(row=0, column=1, sticky="ns")
         self.h_scrollbar.grid(row=1, column=0, sticky="ew")
 
-        self.paned_window.add(self.canvas_frame)
+        self.bta.paned_window.add(self.canvas_frame)
         self.note_area_text = "Click to add notes."
         self.verse_xref_list = []
         
@@ -892,8 +972,8 @@ class TaggerPanel:
         italiclineheight = Font.metrics(self.italicFont)["linespace"]
         global textlinegap, fbdCircleDiam, textelbowroom
         right_x_offset = 30 #to compensate for the scrollbar
-        panelWidth = self.master.winfo_width() - self.paned_window.sashpos(1) - right_x_offset
-        note_area_height = 300 #The height of the "notes" text entry area
+        panelWidth = self.bta.master.winfo_width() - self.bta.paned_window.sashpos(1) - right_x_offset
+        note_area_height = 450 #The height of the "notes" text entry area (1.5x original 300)
 
         #add stuff to the canvas
 
@@ -1099,52 +1179,13 @@ class TaggerPanel:
             self.canvas.create_text(x_offset, y_offset, text="No DB Loaded", anchor=tk.W, font=self.canvasFont)
             y_offset += textlineheight + textlinegap*5 #*5 because it's a title. Have some gap! Golly!
 
-        # Place buttons side by side
-        button_x = x_offset
-        button_spacing = 5
+        # DB buttons have been moved to NavigationTree (below the tree)
         
-        # Load DB button
-        buttonText = "Load DB"
-        button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
-        self.canvas.create_rectangle(button_x, y_offset, button_x+button_width, y_offset + textlineheight + 2*textelbowroom, fill='snow', tags='load_db_button')
-        self.canvas.create_text(button_x+textelbowroom, y_offset+textelbowroom, text=buttonText, anchor=tk.NW, font=self.canvasFont, tags='load_db_button')
-        self.canvas.tag_bind('load_db_button', '<Button-1>', self.load_db)
-        button_x += button_width + button_spacing
-            
-        if open_db_file is not None:
-        ##### DB LOAD SAVE BUTTONS ##---- DONE
-
-            # Merge DBs button (below Load DB)
-            merge_button_x = x_offset
-            merge_y_offset = y_offset + textlineheight + 2*textelbowroom + button_spacing
-            buttonText = "Merge DB..."
-            button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
-            self.canvas.create_rectangle(merge_button_x, merge_y_offset, merge_button_x+button_width, merge_y_offset + textlineheight + 2*textelbowroom, fill='snow', tags='merge_dbs_button')
-            self.canvas.create_text(merge_button_x+textelbowroom, merge_y_offset+textelbowroom, text=buttonText, anchor=tk.NW, font=self.canvasFont, tags='merge_dbs_button')
-            self.canvas.tag_bind('merge_dbs_button', '<Button-1>', self.merge_dbs)
-    
-            # New DB button
-            buttonText = "New DB"
-            button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
-            self.canvas.create_rectangle(button_x, y_offset, button_x+button_width, y_offset + textlineheight + 2*textelbowroom, fill='snow', tags='new_db_button')
-            self.canvas.create_text(button_x+textelbowroom, y_offset+textelbowroom, text=buttonText, anchor=tk.NW, font=self.canvasFont, tags='new_db_button')
-            self.canvas.tag_bind('new_db_button', '<Button-1>', self.new_db)
-            button_x += button_width + button_spacing
-            
-            # Save DB As button
-            buttonText = "Save DB As..."
-            button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
-            self.canvas.create_rectangle(button_x, y_offset, button_x+button_width, y_offset + textlineheight + 2*textelbowroom, fill='snow', tags='save_db_as_button')
-            self.canvas.create_text(button_x+textelbowroom, y_offset+textelbowroom, text=buttonText, anchor=tk.NW, font=self.canvasFont, tags='save_db_as_button')
-            self.canvas.tag_bind('save_db_as_button', '<Button-1>', self.save_db_as)
-
-            # Add extra spacing for the second row of buttons (Merge DBs button)
-            y_offset += 10 + 2*(textlineheight + 2*textelbowroom) + button_spacing
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
 
     def tag_verse_click(self, event, payload):
         #payload = (startverse, endverse)
-        self.options_callback(payload)
+        self.bta.options_callback(payload)
         
     def delete_tag(self, event, verse, tag, reftype):
         answer = messagebox.askyesno("Really delete?", "Do you want to remove tag \""+str(tag)+"\"?")
@@ -1163,7 +1204,7 @@ class TaggerPanel:
     def create_tag(self, event, verse, reftype):
         #tag = simpledialog.askstring("Add Tag", "Enter Tag:", initialvalue="") #OLD WAY -- no tag suggestions
         global open_db_file, bible_data
-        tag = TagInputDialog(self.master,open_db_file).selected_tag
+        tag = TagInputDialog(self.bta.master,open_db_file).selected_tag
         #print("the selected tag is:",tag,type(tag))
         #print("Do the tag creation logic here")
         if (tag is not None) and (tag != ""):
@@ -1173,8 +1214,8 @@ class TaggerPanel:
                 #in this case, "verse" is just another tag.
                 bibledb_lib.add_tag_tag(open_db_file, verse, tag)
             self.display_attributes()
-            self.cause_canvas_to_refresh()
-            self.update_tree_colors()
+            self.bta.cause_canvas_to_refresh()
+            self.bta.update_tree_colors()
             #move the canvas to the bottom.
             #it's a little jumpy, but entirely critical when addint lots of tags to a page with very long notes.
             self.canvas.yview_moveto(1.0)
@@ -1188,7 +1229,7 @@ class TaggerPanel:
         if current_text == None:
             current_text = ""
         MultiLineInputDialog.initial_value = current_text
-        dialog = MultiLineInputDialog(self.master, "Edit Notes")
+        dialog = MultiLineInputDialog(self.bta.master, "Edit Notes")
         new_text = dialog.result
         #print(new_text)
         if new_text is not None and new_text != "":
@@ -1199,8 +1240,8 @@ class TaggerPanel:
             elif reftype == "tag":
                 bibledb_lib.add_tag_note(open_db_file, reference, new_text)
             self.display_attributes()
-            self.cause_canvas_to_refresh()
-            self.update_tree_colors()
+            self.bta.cause_canvas_to_refresh()
+            self.bta.update_tree_colors()
         elif new_text == "":
             answer = messagebox.askyesno("Really delete?", "Do you want to delete this note?")
             if answer:
@@ -1209,82 +1250,8 @@ class TaggerPanel:
                 elif reftype == "tag":
                     bibledb_lib.delete_tag_note(open_db_file, reference)
                 self.display_attributes()
-                self.cause_canvas_to_refresh()
-                self.update_tree_colors()
-    
-    ##### DB LOAD SAVE
-    def load_bdb(self, file_path, no_verse = False):
-        # Store the open file in a global variable
-        
-        global open_db_file, config_filename, cfg
-        open_db_file = file_path
-        if not no_verse:
-            # item = "verseClick" if a verse was clicked
-            # data = {"verse": the verse text, "ref": the verse reference}
-            try:
-                self.display_attributes(item = "verseClick", data={"verse":"", "ref": "Deuteronomy 4:2"})
-            except:
-                pass
-        else:
-            self.display_attributes()
-        self.cause_canvas_to_refresh()
-        self.update_tree_colors()
-
-        if cfg.getboolean('DEFAULT', 'use_last_db', fallback=False):
-            cfg['DEFAULT']['bdb_path'] = file_path
-            with open(config_filename, 'w') as configfile:
-                cfg.write(configfile)
-        
-    def load_db(self, event):
-        # Implement your logic to open the browse window and load the database
-        file_path = filedialog.askopenfilename(defaultextension=".bdb", filetypes=[("Sqlite Bible Files", "*.bdb"), ("All files", "*.*")])
-        if file_path:
-            if file_path[-4:] == ".bdb":
-                print(f"Loaded DB: {file_path}")
-                self.load_bdb(file_path)
-            else:
-                print("I'm not opening that. It's gotta be a SQLITE database file with the extension \".bdb\"")
-
-    def new_db(self, event):
-        global open_db_file
-
-        file_path = filedialog.asksaveasfilename(defaultextension=".bdb", filetypes=[("Sqlite Bible Files", "*.bdb"), ("All files", "*.*")])
-
-        if file_path:
-            with open(file_path, 'w') as f:
-                f.write("")
-                bibledb_lib.makeDB(file_path)
-            self.load_bdb(file_path)
-    
-    def save_db_as(self, event):
-        global open_db_file
-
-        file_path = filedialog.asksaveasfilename(defaultextension=".bdb", filetypes=[("Sqlite Bible Files", "*.bdb"), ("All files", "*.*")])
-
-        if file_path:
-            if open_db_file is None:
-                with open(file_path, 'w') as f:
-                    f.write("")
-                    bibledb_lib.makeDB(file_path)
-            else:
-                bibledb_lib.copy_db(open_db_file, file_path)
-            self.load_bdb(file_path)
-            print(f"Database saved as: {file_path}")
-    
-    def merge_dbs(self, event):
-        # merges a second database into current database
-        file_path = filedialog.askopenfilename(defaultextension=".bdb", filetypes=[("Sqlite Bible Files", "*.bdb"), ("All files", "*.*")])
-        if file_path:
-            if file_path == open_db_file:
-                print("You can't merge a database into itself!")
-            elif not os.path.exists(file_path):
-                print("That file doesn't exist!")
-            elif file_path[-4:] == ".bdb":
-                bibledb_lib.merge_dbs(open_db_file, file_path)
-                self.cause_canvas_to_refresh()
-                self.update_tree_colors()
-            else:
-                print("I'm not opening that. It's gotta be a SQLITE database file with the extension \".bdb\"")
+                self.bta.cause_canvas_to_refresh()
+                self.bta.update_tree_colors()
 
 
 
