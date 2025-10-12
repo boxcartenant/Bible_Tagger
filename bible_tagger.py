@@ -1014,20 +1014,21 @@ class TaggerPanel:
             self.canvas.create_text(x_offset, y_offset, text="No DB Loaded", anchor=tk.W, font=self.canvasFont)
             y_offset += textlineheight + textlinegap*5 #*5 because it's a title. Have some gap! Golly!
 
-        if self.current_data is not None:
+        # Place buttons side by side
+        button_x = x_offset
+        button_spacing = 5
+        
+        # Load DB button
+        buttonText = "Load DB"
+        button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
+        self.canvas.create_rectangle(button_x, y_offset, button_x+button_width, y_offset + textlineheight + 2*textelbowroom, fill='snow', tags='load_db_button')
+        self.canvas.create_text(button_x+textelbowroom, y_offset+textelbowroom, text=buttonText, anchor=tk.NW, font=self.canvasFont, tags='load_db_button')
+        self.canvas.tag_bind('load_db_button', '<Button-1>', self.load_db)
+        button_x += button_width + button_spacing
+            
+        if open_db_file is not None:
         ##### DB LOAD SAVE BUTTONS ##---- DONE
-            # Place buttons side by side
-            button_x = x_offset
-            button_spacing = 5
-            
-            # Load DB button
-            buttonText = "Load DB"
-            button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
-            self.canvas.create_rectangle(button_x, y_offset, button_x+button_width, y_offset + textlineheight + 2*textelbowroom, fill='snow', tags='load_db_button')
-            self.canvas.create_text(button_x+textelbowroom, y_offset+textelbowroom, text=buttonText, anchor=tk.NW, font=self.canvasFont, tags='load_db_button')
-            self.canvas.tag_bind('load_db_button', '<Button-1>', self.load_db)
-            button_x += button_width + button_spacing
-            
+
             # Merge DBs button (below Load DB)
             merge_button_x = x_offset
             merge_y_offset = y_offset + textlineheight + 2*textelbowroom + button_spacing
