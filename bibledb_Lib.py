@@ -1,6 +1,8 @@
 import json
 import sqlite3
 
+CURRENT_DATABASE_VERSION = 1
+
 
 ####  HOW TO USE:
 # first call getBibleData on a valid bible json
@@ -8,9 +10,6 @@ import sqlite3
 # elif you're using an existing DB, then dwai
 # use add_verse_tag, add_verse_note, and add_tag_note to add data to the DB
 
-
-BIBLE_FILE_PATH = "asv.json"
-SQLITE_DATABASE = "bible_database.sqlite"
 
 #ordered list of names, to be used like: book_proper_names[0] #returns "Genesis"
 book_proper_names = []
@@ -398,6 +397,8 @@ def makeDB(sqlite_database):
             UNIQUE(tag_1_id, tag_2_id)
         )
     ''')
+
+    cursor.execute(f"PRAGMA user_version = {CURRENT_DATABASE_VERSION}")
 
     conn.commit()
     conn.close()
