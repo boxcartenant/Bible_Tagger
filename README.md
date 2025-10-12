@@ -46,6 +46,7 @@ I programmed this around the output of SWORD-to-JSON. Here's the link to that: h
     - In Tag view, show back button
 - Can type directly in notes box
     - Way to open dialog for resizeable box editing and viewing
+- Use ffariajr's bible_scraper format
 
 # Getting Started
 
