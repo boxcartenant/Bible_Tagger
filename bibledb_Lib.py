@@ -308,7 +308,7 @@ def getBibleData(bible_file_content):
 #STEP 2: PREP DATABASE
 ######################
 
-# Resulting database has tables for verses, tags, and notes; and tables to relate verse_tags, verse_notes, and tag_notes.
+# Resulting database has tables according to below.
 
 def makeDB(sqlite_database):
     # Create or connect to the SQLite database
@@ -368,11 +368,11 @@ def makeDB(sqlite_database):
 
     # Create the 'verse_group_note' table to associate verse_groups with notes
     cursor.execute('''
-        CREATE TABLE IF NOT EXISTS verse_note (
+        CREATE TABLE IF NOT EXISTS verse_group_note (
             verse_group_id INTEGER NOT NULL,
             note_id INTEGER NOT NULL,
             PRIMARY KEY (verse_group_id, note_id),
-            FOREIGN KEY (verse_group_id) REFERENCES verse_group (verse_group_id),
+            FOREIGN KEY (verse_group_id) REFERENCES verse_group_note (verse_group_id),
             FOREIGN KEY (note_id) REFERENCES note (note_id),
             UNIQUE(verse_group_id, note_id)
         )
@@ -502,7 +502,7 @@ def delete_verse_tag(database_file, verse, tag):
             tag_count = cursor.fetchone()[0]
             
             cursor.execute('''
-                SELECT COUNT(*) FROM verse_note WHERE verse_group_id = ?
+                SELECT COUNT(*) FROM verse_group_note WHERE verse_group_id = ?
             ''', (verse_group_id,))
             note_count = cursor.fetchone()[0]
             
@@ -678,8 +678,8 @@ def add_verse_note(database_file, verse_ref, note, bible_data):
             VALUES (?, ?)
         ''', (verse_group_id, verse_id))
     
-    # Check if a note already exists for this verse_group_id in verse_note
-    cursor.execute('SELECT note_id FROM verse_note WHERE verse_group_id = ?', (verse_group_id,))
+    # Check if a note already exists for this verse_group_id in verse_group_note
+    cursor.execute('SELECT note_id FROM verse_group_note WHERE verse_group_id = ?', (verse_group_id,))
     existing_note_id = cursor.fetchone()
 
     if existing_note_id:
@@ -692,9 +692,9 @@ def add_verse_note(database_file, verse_ref, note, bible_data):
         ''', (entry["note"],))
         note_id = cursor.lastrowid
 
-        # Insert association into 'verse_note' table
+        # Insert association into 'verse_group_note' table
         cursor.execute('''
-            INSERT OR IGNORE INTO verse_note (verse_group_id, note_id) VALUES (?, ?)
+            INSERT OR IGNORE INTO verse_group_note (verse_group_id, note_id) VALUES (?, ?)
         ''', (verse_group_id, note_id))
         
     conn.commit()
@@ -722,7 +722,7 @@ def delete_verse_note(database_file, verse):
 
         for (verse_group_id,) in verse_groups:
             # Get note_id for this verse_group
-            cursor.execute('SELECT note_id FROM verse_note WHERE verse_group_id = ?', (verse_group_id,))
+            cursor.execute('SELECT note_id FROM verse_group_note WHERE verse_group_id = ?', (verse_group_id,))
             note_result = cursor.fetchone()
             
             if note_result:
@@ -730,7 +730,7 @@ def delete_verse_note(database_file, verse):
                 
                 # Delete the association
                 cursor.execute('''
-                    DELETE FROM verse_note WHERE verse_group_id = ? AND note_id = ?
+                    DELETE FROM verse_group_note WHERE verse_group_id = ? AND note_id = ?
                 ''', (verse_group_id, note_id))
 
                 # Delete the note itself
@@ -745,7 +745,7 @@ def delete_verse_note(database_file, verse):
                 tag_count = cursor.fetchone()[0]
                 
                 cursor.execute('''
-                    SELECT COUNT(*) FROM verse_note WHERE verse_group_id = ?
+                    SELECT COUNT(*) FROM verse_group_note WHERE verse_group_id = ?
                 ''', (verse_group_id,))
                 note_count = cursor.fetchone()[0]
                 
@@ -883,7 +883,7 @@ def get_db_stuff(database_file, x_type, y_type, y_value):
             query_string = '''
                 SELECT n.*
                 FROM note n
-                JOIN verse_note vn ON n.note_id = vn.note_id
+                JOIN verse_group_note vn ON n.note_id = vn.note_id
                 JOIN verse_group vg ON vn.verse_group_id = vg.verse_group_id
                 WHERE vg.verse_id = ?
             '''
@@ -1022,7 +1022,7 @@ def find_note_tag_chapters(database_file):
         FROM verse v
         JOIN verse_group vg ON v.verse_id = vg.verse_id
         LEFT JOIN verse_group_tag vgt ON vg.verse_group_id = vgt.verse_group_id
-        LEFT JOIN verse_note vn ON vg.verse_group_id = vn.verse_group_id
+        LEFT JOIN verse_group_note vn ON vg.verse_group_id = vn.verse_group_id
         WHERE vgt.tag_id IS NOT NULL 
            OR vn.note_id IS NOT NULL
         ORDER BY book, chapter;
@@ -1052,7 +1052,7 @@ def get_all_verses_with_notes(database_file):
     cursor.execute("""
             SELECT DISTINCT vg.verse_group_id
             FROM verse_group vg
-            JOIN verse_note vn ON vg.verse_group_id = vn.verse_group_id
+            JOIN verse_group_note vn ON vg.verse_group_id = vn.verse_group_id
         """)
 
     verse_group_ids = [row[0] for row in cursor.fetchall()]
@@ -1124,7 +1124,7 @@ def find_note_tag_verses(database_file, book, chapter):
         JOIN verse_group vg ON v.verse_id = vg.verse_id
         WHERE v.book = ? AND v.chapter = ?
             AND vg.verse_group_id IN (
-                SELECT verse_group_id FROM verse_note
+                SELECT verse_group_id FROM verse_group_note
             )
         ''', (book, chapter))
     noted_group_ids = set(row[0] for row in cursor.fetchall())
