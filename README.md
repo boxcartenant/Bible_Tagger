@@ -55,6 +55,7 @@ I programmed this around the output of SWORD-to-JSON. Here's the link to that: h
 
 ### Setup DB and JSON Files
 
-- Download a bible, convert it to SWORD format, add that to jsonpath in the config file.
+- Rename the config template (it should be config.cfg)
+- Download a bible, convert it to SWORD format, add that to json_path in the config file.
     - You can see how to do the SWORD stuff in the `./SWORD-to-JSON for Bible Tagger/How To.txt`
 - Run bible_tagger.py
