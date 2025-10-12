@@ -11,7 +11,7 @@ import os
 import configparser
 
 textlinegap = 2
-textelbowroom = 10 #that's "elbow room" for left and right spacing
+textelbowroom = 6 #that's "elbow room" for left and right spacing
 bible_data = {}
 
 config_filename = "config.cfg"

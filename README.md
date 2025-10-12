@@ -39,7 +39,6 @@ I programmed this around the output of SWORD-to-JSON. Here's the link to that: h
 - Move DB buttons to below nav tree, move db explorer there too
     - Make buttons smaller
 - Make panels resizeable
-- Rounded button corners
 - Fix middle panel horizontal scroll
 - Tagger Panel differentiates between Verse View and Tag View
     - In Tag view, show back button
