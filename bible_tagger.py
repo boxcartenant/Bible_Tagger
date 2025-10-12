@@ -38,7 +38,7 @@ class BibleTaggerApp:
         self.master = master
         global bible_data, windowsize
 
-        self.master.geometry(windowsize)
+        self.master.geometry(initial_window_size)
 
         self.paned_window = ttk.PanedWindow(self.master, orient="horizontal")
         self.paned_window.pack(fill="both", expand=True)
