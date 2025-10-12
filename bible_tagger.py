@@ -820,6 +820,7 @@ class TaggerPanel:
             title_text = "=== Tag Data ==="
             type_to_get = "tag"
         else:
+            type_to_get = None
             title_text = "Make a Selection"
             
         self.canvas.create_text(x_offset, y_offset, text=title_text, anchor=tk.W, font=self.boldFont)
@@ -847,9 +848,12 @@ class TaggerPanel:
             #Check the DB to find out if there are notes for the selected verse
             # (here we are assuming that we're showing a verse. Later we need to add support for showing tag data)
             # For now, we're only showing index 0, the first row of the results, because idk if I'm going to permit more rows than that to exist.
-            note_query_result = bibledb_lib.get_db_stuff(open_db_file, "note", type_to_get, self.current_data["ref"])
+            if type_to_get:
+                note_query_result = bibledb_lib.get_db_stuff(open_db_file, "note", type_to_get, self.current_data["ref"])
+            else:
+                note_query_result = None
                 
-            if len(note_query_result) > 0:
+            if note_query_result and len(note_query_result) > 0:
                 self.note_area_text = note_query_result[0]['note']
             else:
                 self.note_area_text = None
@@ -876,14 +880,18 @@ class TaggerPanel:
                 text_object = self.canvas.create_text(x_offset+textlinegap, y_offset+noteTextHeight, text="Click to add notes.", anchor=tk.NW, font = self.canvasFont, tags='notepad_area')
                 #self.canvas.tag_bind(text_object, '<Button-1>', self.edit_note_text)
             
-            self.canvas.tag_bind('notepad_area', '<Button-1>', lambda event, reference=self.current_data['ref'], reftype = type_to_get: self.edit_note_text(event, reference, reftype))
+            if type_to_get:
+                self.canvas.tag_bind('notepad_area', '<Button-1>', lambda event, reference=self.current_data['ref'], reftype = type_to_get: self.edit_note_text(event, reference, reftype))
 
             y_offset += note_area_height + 10
 
             # LIST OF TAGS ##---- DONE
 
             #Check the DB for tags for the selected verse or tag
-            self.tags_list = bibledb_lib.get_db_stuff(open_db_file, "tag", type_to_get, self.current_data["ref"])
+            if type_to_get:
+                self.tags_list = bibledb_lib.get_db_stuff(open_db_file, "tag", type_to_get, self.current_data["ref"])
+            else:
+                self.tags_list = []
 
             xb_width = self.canvasFont.measure(" x ")
             tagx = 0
@@ -954,10 +962,11 @@ class TaggerPanel:
             buttonText = "Add Tag"
             if type_to_get == "tag":
                 buttonText = "Add Tag Synonym"
-            button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
-            self.create_tag_button_rect = self.canvas.create_rectangle(x_offset, y_offset, x_offset + button_width, y_offset + textlineheight + 2*textelbowroom, fill='azure', tags='create_tag_button')
-            self.canvas.create_text(x_offset+textelbowroom, y_offset+textelbowroom, text=buttonText, anchor=tk.NW, font=self.canvasFont, tags = 'create_tag_button')#button text for open db
-            self.canvas.tag_bind('create_tag_button', '<Button-1>', lambda event, verse=self.current_data['ref'], reftype = type_to_get: self.create_tag(event, verse, reftype))
+            if type_to_get:
+                button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
+                self.create_tag_button_rect = self.canvas.create_rectangle(x_offset, y_offset, x_offset + button_width, y_offset + textlineheight + 2*textelbowroom, fill='azure', tags='create_tag_button')
+                self.canvas.create_text(x_offset+textelbowroom, y_offset+textelbowroom, text=buttonText, anchor=tk.NW, font=self.canvasFont, tags = 'create_tag_button')#button text for open db
+                self.canvas.tag_bind('create_tag_button', '<Button-1>', lambda event, verse=self.current_data['ref'], reftype = type_to_get: self.create_tag(event, verse, reftype))
 
             y_offset += 10 + textlineheight + 2*textelbowroom
     
