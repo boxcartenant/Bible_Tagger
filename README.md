@@ -34,8 +34,18 @@ I programmed this around the output of SWORD-to-JSON. Here's the link to that: h
 
 ## Wanted Items
 
+- Need universally unique way to identify book/chapter/verse across translations
+    - Make verse references in the DB more explicit so that the tool will accommodate switching between translations with missing verses
 - Add a tool to merge databases
-- Make verse references in the DB more explicit so that the tool will accommodate switching between translations with missing verses
+- Move DB buttons to below nav tree, move db explorer there too
+    - Make buttons smaller
+- Make panels resizeable
+- Rounded button corners
+- Fix middle panel horizontal scroll
+- Tagger Panel differentiates between Verse View and Tag View
+    - In Tag view, show back button
+- Can type directly in notes box
+    - Way to open dialog for resizeable box editing and viewing
 
 # Getting Started
 
