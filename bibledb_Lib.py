@@ -1,6 +1,7 @@
 import json
 import sqlite3
 
+# update this when breaking schema changes are made, prevents attempting to merge incompatible databases
 CURRENT_DATABASE_VERSION = 1
 
 
@@ -37,6 +38,329 @@ def copy_db(source_path, dest_path):
     source.backup(dest)
     source.close()
     dest.close()
+
+def merge_dbs(current_db_path, other_db_path):
+    """
+    Merge data from other_db into current_db.
+    
+    Args:
+        current_db_path: Path to the current/target database
+        other_db_path: Path to the database to merge from
+
+    """
+    try:
+        # Connect to both databases
+        current_conn = sqlite3.connect(current_db_path)
+        current_conn.row_factory = sqlite3.Row
+        current_cursor = current_conn.cursor()
+        
+        other_conn = sqlite3.connect(other_db_path)
+        other_conn.row_factory = sqlite3.Row
+        other_cursor = other_conn.cursor()
+        
+        # Check database versions
+        current_cursor.execute("PRAGMA user_version")
+        current_version = current_cursor.fetchone()[0]
+        
+        other_cursor.execute("PRAGMA user_version")
+        other_version = other_cursor.fetchone()[0]
+        
+        if current_version != other_version:
+            print(f"ERROR: Cannot merge databases with different schema versions. (This: {current_version}, Other: {other_version})")
+            current_conn.close()
+            other_conn.close()
+            return
+
+        if current_version != CURRENT_DATABASE_VERSION:
+            print(f"ERROR: Both databases are version {current_version}, expected version {CURRENT_DATABASE_VERSION}")
+            current_conn.close()
+            other_conn.close()
+            return
+
+        print("Database versions match. Starting merge...")
+
+        # Create mappings for ID translations
+        tag_id_map = {}  # old_tag_id -> new_tag_id
+        note_id_map = {}  # old_note_id -> new_note_id
+        verse_group_id_map = {}  # old_verse_group_id -> new_verse_group_id
+        
+        # 1. Merge tags
+        print("Merging tags...")
+        other_cursor.execute("SELECT tag_id, tag FROM tag")
+        other_tags = other_cursor.fetchall()
+        
+        for tag in other_tags:
+            old_tag_id = tag['tag_id']
+            tag_name = tag['tag']
+            
+            # Check if tag already exists in current db
+            current_cursor.execute("SELECT tag_id FROM tag WHERE tag = ?", (tag_name,))
+            existing = current_cursor.fetchone()
+            
+            if existing:
+                # Tag exists, use existing ID
+                tag_id_map[old_tag_id] = existing['tag_id']
+            else:
+                # Tag doesn't exist, insert it
+                current_cursor.execute("INSERT INTO tag (tag) VALUES (?)", (tag_name,))
+                new_tag_id = current_cursor.lastrowid
+                tag_id_map[old_tag_id] = new_tag_id
+        
+        current_conn.commit()
+        print(f"Merged {len(other_tags)} tags")
+        
+        # 2. Merge notes
+        print("Merging notes...")
+        other_cursor.execute("SELECT note_id, note FROM note")
+        other_notes = other_cursor.fetchall()
+        
+        for note in other_notes:
+            old_note_id = note['note_id']
+            note_text = note['note']
+            
+            # Check if exact note already exists
+            current_cursor.execute("SELECT note_id FROM note WHERE note = ?", (note_text,))
+            existing = current_cursor.fetchone()
+            
+            if existing:
+                # Note exists, use existing ID
+                note_id_map[old_note_id] = existing['note_id']
+            else:
+                # Note doesn't exist, insert it
+                current_cursor.execute("INSERT INTO note (note) VALUES (?)", (note_text,))
+                new_note_id = current_cursor.lastrowid
+                note_id_map[old_note_id] = new_note_id
+        
+        current_conn.commit()
+        print(f"Merged {len(other_notes)} notes")
+        
+        # 3. Merge verses
+        print("Merging verses...")
+        other_cursor.execute("SELECT verse_id, book, chapter, verse FROM verse")
+        other_verses = other_cursor.fetchall()
+        
+        for verse in other_verses:
+            verse_id = verse['verse_id']
+            book = verse['book']
+            chapter = verse['chapter']
+            verse_num = verse['verse']
+
+            # Check if verse already exists
+            current_cursor.execute("SELECT verse_id FROM verse WHERE verse_id = ?", (verse_id,))
+            if not current_cursor.fetchone():
+                # Verse doesn't exist, insert it with all required fields
+                current_cursor.execute(
+                    "INSERT INTO verse (verse_id, book, chapter, verse) VALUES (?, ?, ?, ?)",
+                    (verse_id, book, chapter, verse_num)
+                )
+
+        current_conn.commit()
+        print(f"Merged {len(other_verses)} verses")
+
+        # 4. Merge verse_groups
+        print("Merging verse groups...")
+        other_cursor.execute("SELECT verse_group_id FROM verse_group")
+        other_verse_groups = other_cursor.fetchall()
+
+        for vg in other_verse_groups:
+            old_vg_id = vg['verse_group_id']
+            
+            # Get all verses in this group from other db
+            other_cursor.execute("""
+                SELECT verse_id FROM verse_group
+                WHERE verse_group_id = ?
+                ORDER BY verse_id
+            """, (old_vg_id,))
+            verses_in_group = [row['verse_id'] for row in other_cursor.fetchall()]
+            
+            # Check if this exact verse group already exists in current db
+            # A verse group is uniquely identified by its set of verses
+            if len(verses_in_group) == 1:
+                # Single verse, no verse_group needed
+                verse_group_id_map[old_vg_id] = None
+            else:
+                # Check if this combination of verses already exists as a group
+                placeholders = ','.join('?' * len(verses_in_group))
+                current_cursor.execute(f"""
+                    SELECT verse_group_id, COUNT(*) as count
+                    FROM verse_group
+                    WHERE verse_id IN ({placeholders})
+                    GROUP BY verse_group_id
+                    HAVING count = ?
+                """, verses_in_group + [len(verses_in_group)])
+                
+                matching_groups = current_cursor.fetchall()
+                
+                # Verify it's an exact match (not a superset)
+                exact_match = None
+                for group in matching_groups:
+                    current_cursor.execute("""
+                        SELECT verse_id FROM verse_group
+                        WHERE verse_group_id = ?
+                        ORDER BY verse_id
+                    """, (group['verse_group_id'],))
+                    current_verses = [row['verse_id'] for row in current_cursor.fetchall()]
+                    if current_verses == verses_in_group:
+                        exact_match = group['verse_group_id']
+                        break
+                
+                if exact_match:
+                    # Group exists, use existing ID
+                    verse_group_id_map[old_vg_id] = exact_match
+                else:
+                    # Group doesn't exist, create new one
+                    # First, ensure all verses exist in current db
+                    for verse_id in verses_in_group:
+                        current_cursor.execute("SELECT verse_id FROM verse WHERE verse_id = ?", (verse_id,))
+                        if not current_cursor.fetchone():
+                            # Parse verse_id to extract book, chapter, verse
+                            parts = verse_id.split('.')
+                            book = int(parts[0])
+                            chapter = int(parts[1])
+                            verse_num = int(parts[2])
+                            current_cursor.execute(
+                                "INSERT INTO verse (verse_id, book, chapter, verse) VALUES (?, ?, ?, ?)",
+                                (verse_id, book, chapter, verse_num)
+                            )
+                    
+                    # Get next verse_group_id
+                    current_cursor.execute("SELECT MAX(verse_group_id) FROM verse_group")
+                    result = current_cursor.fetchone()[0]
+                    new_vg_id = (result if result else 0) + 1
+                    
+                    # Insert all verses with this group ID
+                    for verse_id in verses_in_group:
+                        current_cursor.execute("""
+                            INSERT INTO verse_group (verse_group_id, verse_id)
+                            VALUES (?, ?)
+                        """, (new_vg_id, verse_id))
+                    
+                    verse_group_id_map[old_vg_id] = new_vg_id
+        
+        current_conn.commit()
+        print(f"Merged {len(other_verse_groups)} verse groups")
+        
+        # 5. Merge verse_group_tag relationships
+        print("Merging verse-tag relationships...")
+        other_cursor.execute("SELECT verse_group_id, tag_id FROM verse_group_tag")
+        vg_tags = other_cursor.fetchall()
+        
+        for vg_tag in vg_tags:
+            old_vg_id = vg_tag['verse_group_id']
+            old_tag_id = vg_tag['tag_id']
+            
+            new_vg_id = verse_group_id_map.get(old_vg_id)
+            new_tag_id = tag_id_map.get(old_tag_id)
+            
+            if new_vg_id is not None and new_tag_id is not None:
+                # Check if relationship already exists
+                current_cursor.execute("""
+                    SELECT 1 FROM verse_group_tag
+                    WHERE verse_group_id = ? AND tag_id = ?
+                """, (new_vg_id, new_tag_id))
+                
+                if not current_cursor.fetchone():
+                    current_cursor.execute("""
+                        INSERT INTO verse_group_tag (verse_group_id, tag_id)
+                        VALUES (?, ?)
+                    """, (new_vg_id, new_tag_id))
+        
+        current_conn.commit()
+        print(f"Merged {len(vg_tags)} verse-tag relationships")
+        
+        # 6. Merge verse_group_note relationships
+        print("Merging verse-note relationships...")
+        other_cursor.execute("SELECT verse_group_id, note_id FROM verse_group_note")
+        v_notes = other_cursor.fetchall()
+        
+        for v_note in v_notes:
+            old_vg_id = v_note['verse_group_id']
+            old_note_id = v_note['note_id']
+            new_vg_id = verse_group_id_map.get(old_vg_id)
+            new_note_id = note_id_map.get(old_note_id)
+            
+            if new_vg_id is not None and new_note_id is not None:
+                # Check if relationship already exists
+                current_cursor.execute("""
+                    SELECT 1 FROM verse_group_note
+                    WHERE verse_group_id = ? AND note_id = ?
+                """, (new_vg_id, new_note_id))
+                
+                if not current_cursor.fetchone():
+                    current_cursor.execute("""
+                        INSERT INTO verse_group_note (verse_group_id, note_id)
+                        VALUES (?, ?)
+                    """, (new_vg_id, new_note_id))
+        
+        current_conn.commit()
+        print(f"Merged {len(v_notes)} verse-note relationships")
+        
+        # 7. Merge tag_note relationships
+        print("Merging tag-note relationships...")
+        other_cursor.execute("SELECT tag_id, note_id FROM tag_note")
+        t_notes = other_cursor.fetchall()
+        
+        for t_note in t_notes:
+            old_tag_id = t_note['tag_id']
+            old_note_id = t_note['note_id']
+            new_tag_id = tag_id_map.get(old_tag_id)
+            new_note_id = note_id_map.get(old_note_id)
+            
+            if new_tag_id is not None and new_note_id is not None:
+                # Check if relationship already exists
+                current_cursor.execute("""
+                    SELECT 1 FROM tag_note
+                    WHERE tag_id = ? AND note_id = ?
+                """, (new_tag_id, new_note_id))
+                
+                if not current_cursor.fetchone():
+                    current_cursor.execute("""
+                        INSERT INTO tag_note (tag_id, note_id)
+                        VALUES (?, ?)
+                    """, (new_tag_id, new_note_id))
+        
+        current_conn.commit()
+        print(f"Merged {len(t_notes)} tag-note relationships")
+        
+        # 8. Merge tag_tag relationships
+        print("Merging tag-tag relationships...")
+        other_cursor.execute("SELECT tag_1_id, tag_2_id FROM tag_tag")
+        t_tags = other_cursor.fetchall()
+        
+        for t_tag in t_tags:
+            old_tag1_id = t_tag['tag_1_id']
+            old_tag_2_id = t_tag['tag_2_id']
+            new_tag_1_id = tag_id_map.get(old_tag1_id)
+            old_tag_2_id = tag_id_map.get(old_tag_2_id)
+            
+            if new_tag_1_id is not None and old_tag_2_id is not None:
+                # Check if relationship already exists
+                current_cursor.execute("""
+                    SELECT 1 FROM tag_tag
+                    WHERE tag_1_id = ? AND tag_2_id = ?
+                """, (new_tag_1_id, old_tag_2_id))
+                
+                if not current_cursor.fetchone():
+                    current_cursor.execute("""
+                        INSERT INTO tag_tag (tag_1_id, tag_2_id)
+                        VALUES (?, ?)
+                    """, (new_tag_1_id, old_tag_2_id))
+        
+        current_conn.commit()
+        print(f"Merged {len(t_tags)} tag-tag relationships")
+        
+        # Close connections
+        other_conn.close()
+        current_conn.close()
+        
+        print("\nDatabase merge completed successfully!")
+        return True
+        
+    except Exception as e:
+        print(f"\nError during merge: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
 
 def normalize_vref(passage):
     # takes a verse reference in the form (1,1,1,2,2,2) like what we get from the verses db

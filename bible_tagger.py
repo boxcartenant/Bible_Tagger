@@ -1181,15 +1181,15 @@ class TaggerPanel:
             print(f"Database saved as: {file_path}")
     
     def merge_dbs(self, event):
-        # TODO: Implement database merge functionality
-        # This should allow user to select a second database file and merge its contents
-        # into the currently open database
+        # merges a second database into current database
         file_path = filedialog.askopenfilename(defaultextension=".bdb", filetypes=[("Sqlite Bible Files", "*.bdb"), ("All files", "*.*")])
         if file_path:
             if file_path == open_db_file:
                 print("You can't merge a database into itself!")
             elif file_path[-4:] == ".bdb":
                 bibledb_lib.merge_dbs(open_db_file, file_path)
+                self.cause_canvas_to_refresh()
+                self.update_tree_colors()
             else:
                 print("I'm not opening that. It's gotta be a SQLITE database file with the extension \".bdb\"")
 

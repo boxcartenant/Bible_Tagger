@@ -36,7 +36,6 @@ I programmed this around the output of SWORD-to-JSON. Here's the link to that: h
 
 - Need universally unique way to identify book/chapter/verse across translations
     - Make verse references in the DB more explicit so that the tool will accommodate switching between translations with missing verses
-- Add a tool to merge databases
 - Move DB buttons to below nav tree, move db explorer there too
     - Make buttons smaller
 - Make panels resizeable
