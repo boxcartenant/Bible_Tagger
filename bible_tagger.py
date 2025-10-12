@@ -55,11 +55,21 @@ class BibleTaggerApp:
         self.tagger_panel = TaggerPanel(self.master, self.paned_window, self.options_callback, self.cause_canvas_to_refresh, self.update_tree_colors)
 
         self.paned_window.bind("<B1-Motion>", self.on_sash_drag)
+        self.paned_window.bind("<ButtonRelease-1>", self.on_sash_release)
         self.paned_window.bind("<Configure>", lambda event : self.tagger_panel.display_attributes(None))
 
         # Bind window resize event to save geometry
         self.resize_after_id = None
+        self.sash_after_id = None
         self.master.bind("<Configure>", self.on_window_resize)
+
+        # Load and apply saved sash positions after window is ready
+        # Default sash positions: left panel ~250px, right panel ~250px from right
+        try:
+            right_sash = cfg.getint('INTERNAL', 'sash_position', fallback=250)
+        except:
+            right_sash = 250
+        self.master.after(100, lambda: self.restore_sash_position(right_sash))
 
         #fixing the scrollbar behavior
         self.active_panel = None
@@ -137,21 +147,44 @@ class BibleTaggerApp:
                 return
             self.active_panel.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
-    def on_sash_drag(self,event):
-        # If the moved sash is near the treeview sash (left), update the tree view
-        if self.paned_window.sashpos(0) - 10 < event.x < self.paned_window.sashpos(0) + 10:
-            new_sash_position = event.x
-            self.navigation_tree.tree_frame.columnconfigure(0, weight=1)
-            self.navigation_tree.tree_frame.configure(width=new_sash_position)
-            self.navigation_tree.tree.column("#0", width=new_sash_position)
-        #elif the moved sash is near the options panel (right), update the options panel
-        elif self.paned_window.sashpos(1) - 10 < event.x < self.paned_window.sashpos(1) + 10:
+    def on_sash_drag(self, event):
+        # If the moved sash is near the treeview sash (left), ignore
+        # if the moved sash is near the options panel (right), update the options panel
+        if self.paned_window.sashpos(1) - 10 < event.x < self.paned_window.sashpos(1) + 10:
             self.scripture_panel.canvas_callback(None, None)
         #in both cases, we need to update the canvas where the verses are (middle)
         self.scripture_panel.display_chapter()
         self.tagger_panel.display_attributes()
 
         #To Do: account for situations where the user puts the sashes together.
+
+    def on_sash_release(self, event):
+        # Save sash positions after mouse button is released
+        if self.sash_after_id:
+            self.master.after_cancel(self.sash_after_id)
+        self.sash_after_id = self.master.after(500, self.save_sash_position)
+
+    def restore_sash_position(self, right_sash):
+        try:
+            self.paned_window.sashpos(1, right_sash)
+        except:
+            pass  # Ignore errors if positions are invalid
+
+    def save_sash_position(self):
+        global cfg, config_filename
+        try:
+            right_sash = self.paned_window.sashpos(1)
+            
+            # Update config
+            cfg.set('INTERNAL', 'sash_position', str(right_sash))
+            
+            # Save to file
+            with open(config_filename, 'w') as configfile:
+                cfg.write(configfile)
+            
+            self.sash_after_id = None
+        except:
+            pass  # Ignore errors during save
 
     def update_tree_colors(self):
         #do a sql query to find out what chapters have notes or tags
