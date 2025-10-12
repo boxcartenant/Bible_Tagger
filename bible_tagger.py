@@ -72,6 +72,7 @@ class BibleTaggerApp:
         except:
             right_sash = 250
         self.master.after(100, lambda: self.restore_sash_position(right_sash))
+        self.master.after(110, lambda: self.tagger_panel.display_attributes(None))
 
         #fixing the scrollbar behavior
         self.active_panel = None
@@ -227,7 +228,7 @@ class BibleTaggerApp:
         # If the moved sash is near the treeview sash (left), ignore
         # if the moved sash is near the options panel (right), update the options panel
         if self.paned_window.sashpos(1) - 10 < event.x < self.paned_window.sashpos(1) + 10:
-            self.scripture_panel.canvas_callback(None, None)
+            self.canvas_callback(None, None)
         #in both cases, we need to update the canvas where the verses are (middle)
         self.scripture_panel.display_chapter()
         self.tagger_panel.display_attributes()
@@ -973,7 +974,7 @@ class TaggerPanel:
         global textlinegap, fbdCircleDiam, textelbowroom
         right_x_offset = 30 #to compensate for the scrollbar
         panelWidth = self.bta.master.winfo_width() - self.bta.paned_window.sashpos(1) - right_x_offset
-        note_area_height = 450 #The height of the "notes" text entry area (1.5x original 300)
+        note_area_height = 500
 
         #add stuff to the canvas
 
