@@ -1064,12 +1064,12 @@ class TaggerPanel:
             self.canvas.create_text(merge_button_x+textelbowroom, merge_y_offset+textelbowroom, text=buttonText, anchor=tk.NW, font=self.canvasFont, tags='merge_dbs_button')
             self.canvas.tag_bind('merge_dbs_button', '<Button-1>', self.merge_dbs)
     
-            # Save DB button
-            buttonText = "Save DB"
+            # New DB button
+            buttonText = "New DB"
             button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
-            self.canvas.create_rectangle(button_x, y_offset, button_x+button_width, y_offset + textlineheight + 2*textelbowroom, fill='snow', tags='save_db_button')
-            self.canvas.create_text(button_x+textelbowroom, y_offset+textelbowroom, text=buttonText, anchor=tk.NW, font=self.canvasFont, tags='save_db_button')
-            self.canvas.tag_bind('save_db_button', '<Button-1>', self.save_db)
+            self.canvas.create_rectangle(button_x, y_offset, button_x+button_width, y_offset + textlineheight + 2*textelbowroom, fill='snow', tags='new_db_button')
+            self.canvas.create_text(button_x+textelbowroom, y_offset+textelbowroom, text=buttonText, anchor=tk.NW, font=self.canvasFont, tags='new_db_button')
+            self.canvas.tag_bind('new_db_button', '<Button-1>', self.new_db)
             button_x += button_width + button_spacing
             
             # Save DB As button
@@ -1186,15 +1186,16 @@ class TaggerPanel:
             else:
                 print("I'm not opening that. It's gotta be a SQLITE database file with the extension \".bdb\"")
 
-    def save_db(self, event):
-        # Save to the currently open database file
+    def new_db(self, event):
         global open_db_file
-        if open_db_file:
-            print(f"Database auto-saves. Current DB: {open_db_file}")
-            messagebox.showinfo("Save", f"Database is already saved.\nCurrent file: {open_db_file}")
-        else:
-            print("No database file is currently open. Use 'Save As...' to create a new one.")
-            messagebox.showwarning("No Database", "No database file is currently open.\nUse 'Save As...' to create a new database.")
+
+        file_path = filedialog.asksaveasfilename(defaultextension=".bdb", filetypes=[("Sqlite Bible Files", "*.bdb"), ("All files", "*.*")])
+
+        if file_path:
+            with open(file_path, 'w') as f:
+                f.write("")
+                bibledb_lib.makeDB(file_path)
+            self.load_bdb(file_path)
     
     def save_db_as(self, event):
         global open_db_file
@@ -1217,6 +1218,8 @@ class TaggerPanel:
         if file_path:
             if file_path == open_db_file:
                 print("You can't merge a database into itself!")
+            elif not os.path.exists(file_path):
+                print("That file doesn't exist!")
             elif file_path[-4:] == ".bdb":
                 bibledb_lib.merge_dbs(open_db_file, file_path)
                 self.cause_canvas_to_refresh()
