@@ -34,10 +34,8 @@ I programmed this around the output of SWORD-to-JSON. Here's the link to that: h
 
 ## Wanted Items
 
-- Need universally unique way to identify book/chapter/verse across translations
+- Need universally unique way to identify book/chapter/verse across translations and even languages
     - Make verse references in the DB more explicit so that the tool will accommodate switching between translations with missing verses
-- Tagger Panel differentiates between Verse View and Tag View
-    - In Tag view, show back button
 - Can type directly in notes box
     - Way to open dialog for resizeable box editing and viewing
 - Use ffariajr's bible_scraper format

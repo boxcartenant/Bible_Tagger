@@ -891,6 +891,8 @@ class TaggerPanel:
         self.boldFont = Font(size = 10, weight = 'bold')
         self.current_data = None
         self.current_item = None
+        self.previous_verse_data = None  # Store previous verse when switching to tag view
+        self.previous_verse_item = None
         
         global open_db_file
 
@@ -946,6 +948,15 @@ class TaggerPanel:
         if item == None:
             item = self.current_item
         else:
+            # Save previous verse state when switching to tag view
+            if item == "tagClick" and self.current_item == "verseClick":
+                self.previous_verse_data = self.current_data
+                self.previous_verse_item = self.current_item
+            # When switching back to verse view (not from tag click), clear previous verse
+            elif item == "verseClick" and self.current_item != "tagClick":
+                self.previous_verse_data = None
+                self.previous_verse_item = None
+            
             self.current_item = item
             
         #get the verse reference and store in self.current_data['ref']
@@ -990,6 +1001,24 @@ class TaggerPanel:
             title_text = "Make a Selection"
             
         self.canvas.create_text(x_offset, y_offset, text=title_text, anchor=tk.W, font=self.boldFont)
+        
+        # Show back button when in tag view and there's a previous verse to go back to
+        if self.current_item == "tagClick" and self.previous_verse_data is not None:
+            back_button_text = "← Back to Verse"
+            back_button_width = self.canvasFont.measure(back_button_text) + 2*textelbowroom
+            back_button_x = panelWidth - back_button_width - 5  # Right-aligned with 5px margin
+            
+            back_button_rect = self.canvas.create_rectangle(
+                back_button_x, y_offset, 
+                back_button_x + back_button_width, y_offset + textlineheight + 2*textelbowroom, 
+                fill='lightblue', tags='back_button'
+            )
+            back_button_text_obj = self.canvas.create_text(
+                back_button_x + textelbowroom, y_offset + textelbowroom, 
+                text=back_button_text, anchor=tk.NW, font=self.canvasFont, tags='back_button'
+            )
+            self.canvas.tag_bind('back_button', '<Button-1>', self.go_back_to_verse)
+        
         y_offset += boldlineheight + textlinegap + 10
         
         ##### TITLE (the verse reference) ##---- DONE
@@ -1184,6 +1213,16 @@ class TaggerPanel:
         
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
 
+    def go_back_to_verse(self, event):
+        """Go back to the previously viewed verse from tag view"""
+        if self.previous_verse_data is not None and self.previous_verse_item is not None:
+            # Restore the previous verse view
+            self.display_attributes(self.previous_verse_item, self.previous_verse_data, False)
+            self.reset_scrollregion(None)
+            # Clear the previous verse state since we're back to it now
+            self.previous_verse_data = None
+            self.previous_verse_item = None
+    
     def tag_verse_click(self, event, payload):
         #payload = (startverse, endverse)
         self.bta.options_callback(payload)
