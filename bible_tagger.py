@@ -43,8 +43,7 @@ class BibleTaggerApp:
 
         jsonpath = cfg.get('DEFAULT', 'json_path', fallback=None)
         bdbpath = cfg.get('DEFAULT', 'bdb_path', fallback=None)
-        initial_window_size = cfg.get('DEFAULT', 'initial_window_size', fallback="1000x600")
-        use_last_db = cfg.getboolean('DEFAULT', 'use_last_db', fallback=False)
+        initial_window_size = cfg.get('INTERNAL', 'window_size', fallback="1000x600")
 
         self.master.geometry(initial_window_size)
 
@@ -57,6 +56,10 @@ class BibleTaggerApp:
 
         self.paned_window.bind("<B1-Motion>", self.on_sash_drag)
         self.paned_window.bind("<Configure>", lambda event : self.tagger_panel.display_attributes(None))
+
+        # Bind window resize event to save geometry
+        self.resize_after_id = None
+        self.master.bind("<Configure>", self.on_window_resize)
 
         #fixing the scrollbar behavior
         self.active_panel = None
@@ -99,6 +102,29 @@ class BibleTaggerApp:
     def clear_active_panel(self, event):
         # Clear the active panel when the mouse leaves
         self.active_panel = None
+
+    def on_window_resize(self, event):
+        # Only handle resize events for the main window, not child widgets
+        if event.widget == self.master:
+            # Cancel any pending save to avoid saving on every pixel change
+            if self.resize_after_id:
+                self.master.after_cancel(self.resize_after_id)
+            # Schedule a save after 500ms of no resizing
+            self.resize_after_id = self.master.after(500, self.save_window_size)
+
+    def save_window_size(self):
+        global cfg, config_filename
+        # Get current window geometry
+        geometry = self.master.geometry()
+        
+        # Update config
+        cfg.set('INTERNAL', 'window_size', geometry)
+        
+        # Save to file
+        with open(config_filename, 'w') as configfile:
+            cfg.write(configfile)
+        
+        self.resize_after_id = None
 
     def scroll_active_panel(self, event):
         # Only scroll the active panel
