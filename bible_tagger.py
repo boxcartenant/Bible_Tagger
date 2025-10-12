@@ -1068,13 +1068,13 @@ class TaggerPanel:
 
     def create_tag(self, event, verse, reftype):
         #tag = simpledialog.askstring("Add Tag", "Enter Tag:", initialvalue="") #OLD WAY -- no tag suggestions
-        global open_db_file
+        global open_db_file, bible_data
         tag = TagInputDialog(self.master,open_db_file).selected_tag
         #print("the selected tag is:",tag,type(tag))
         #print("Do the tag creation logic here")
         if (tag is not None) and (tag != ""):
             if reftype == "verse":
-                bibledb_lib.add_verse_tag(open_db_file, verse, tag)
+                bibledb_lib.add_verse_tag(open_db_file, verse, tag, bible_data)
             elif reftype == "tag":
                 #in this case, "verse" is just another tag.
                 bibledb_lib.add_tag_tag(open_db_file, verse, tag)
@@ -1098,9 +1098,10 @@ class TaggerPanel:
         new_text = dialog.result
         #print(new_text)
         if new_text is not None and new_text != "":
+            global bible_data
             self.note_area_text = new_text
             if reftype == "verse":
-                bibledb_lib.add_verse_note(open_db_file, reference, new_text)
+                bibledb_lib.add_verse_note(open_db_file, reference, new_text, bible_data)
             elif reftype == "tag":
                 bibledb_lib.add_tag_note(open_db_file, reference, new_text)
             self.display_attributes()

@@ -149,6 +149,103 @@ def get_or_create_verse_group_id(cursor):
     result = cursor.fetchone()[0]
     return (result + 1) if result is not None else 1
 
+# Helper function to expand verse ranges using the loaded Bible data
+def expand_verse_range(start_book, start_chapter, start_verse, end_book, end_chapter, end_verse, bible_data):
+    """
+    Expand a verse range into all individual verses using the loaded Bible data.
+    Returns a list of (book, chapter, verse) tuples.
+    
+    Args:
+        start_book, start_chapter, start_verse: Starting reference (0-indexed book)
+        end_book, end_chapter, end_verse: Ending reference (0-indexed book)
+        bible_data: Dictionary of Bible data {book_name: [[verses_ch1], [verses_ch2], ...]}
+    """
+    verses = []
+    
+    # Get book names list (book_proper_names should be populated by getBibleData)
+    if not book_proper_names or start_book >= len(book_proper_names) or end_book >= len(book_proper_names):
+        # Fallback: just return start and end if data not available
+        raise Exception("Bible data is required to expand verse ranges.")
+    
+    start_book_name = book_proper_names[start_book]
+    end_book_name = book_proper_names[end_book]
+    
+    # Same book
+    if start_book == end_book:
+        book_name = start_book_name
+        if book_name not in bible_data:
+            raise Exception(f"Book '{book_name}' not found in Bible data.")
+        
+        book_chapters = bible_data[book_name]
+        
+        # Same chapter
+        if start_chapter == end_chapter:
+            for v in range(start_verse, end_verse + 1):
+                verses.append((start_book, start_chapter, v))
+        # Different chapters
+        else:
+            # First chapter: from start_verse to end of chapter
+            if start_chapter - 1 < len(book_chapters):
+                max_verse = len(book_chapters[start_chapter - 1])  # chapter is 1-indexed
+                for v in range(start_verse, max_verse + 1):
+                    verses.append((start_book, start_chapter, v))
+            
+            # Middle chapters: all verses
+            for ch in range(start_chapter + 1, end_chapter):
+                if ch - 1 < len(book_chapters):
+                    max_verse = len(book_chapters[ch - 1])
+                    for v in range(1, max_verse + 1):
+                        verses.append((start_book, ch, v))
+            
+            # Last chapter: from 1 to end_verse
+            for v in range(1, end_verse + 1):
+                verses.append((end_book, end_chapter, v))
+    
+    # Different books
+    else:
+        # First book, starting chapter: from start_verse to end of chapter
+        if start_book_name in bible_data:
+            book_chapters = bible_data[start_book_name]
+            if start_chapter - 1 < len(book_chapters):
+                max_verse = len(book_chapters[start_chapter - 1])
+                for v in range(start_verse, max_verse + 1):
+                    verses.append((start_book, start_chapter, v))
+            
+            # First book, remaining chapters: all verses
+            for ch in range(start_chapter + 1, len(book_chapters) + 1):
+                if ch - 1 < len(book_chapters):
+                    max_verse = len(book_chapters[ch - 1])
+                    for v in range(1, max_verse + 1):
+                        verses.append((start_book, ch, v))
+        
+        # Middle books: all chapters and verses
+        for bk in range(start_book + 1, end_book):
+            if bk < len(book_proper_names):
+                book_name = book_proper_names[bk]
+                if book_name in bible_data:
+                    book_chapters = bible_data[book_name]
+                    for ch_idx, chapter_verses in enumerate(book_chapters):
+                        ch = ch_idx + 1  # chapter is 1-indexed
+                        max_verse = len(chapter_verses)
+                        for v in range(1, max_verse + 1):
+                            verses.append((bk, ch, v))
+        
+        # Last book
+        if end_book_name in bible_data:
+            book_chapters = bible_data[end_book_name]
+            # Chapters before end_chapter: all verses
+            for ch in range(1, end_chapter):
+                if ch - 1 < len(book_chapters):
+                    max_verse = len(book_chapters[ch - 1])
+                    for v in range(1, max_verse + 1):
+                        verses.append((end_book, ch, v))
+            
+            # Last chapter: from 1 to end_verse
+            for v in range(1, end_verse + 1):
+                verses.append((end_book, end_chapter, v))
+    
+    return verses
+
 # Functions to parse verse references and return a formatted dictionary
 def tagVerseEntry(verse_ref, tag_name):
     verses = parseVerseReference(verse_ref)
@@ -311,7 +408,7 @@ def makeDB(sqlite_database):
 ######################
 #STEP 3: MODIFY DB DATA
 ######################
-def add_verse_tag(database_file, verse_ref, tag_name):
+def add_verse_tag(database_file, verse_ref, tag_name, bible_data):
     tag_name = tag_name.lower()
     entry = tagVerseEntry(verse_ref, tag_name)
     conn = sqlite3.connect(database_file)
@@ -327,43 +424,21 @@ def add_verse_tag(database_file, verse_ref, tag_name):
     start_verse   = int(entry["start_verse"])
     end_verse     = int(entry["end_verse"])
 
-    # Handle verse range (could span multiple verses, chapters, or books)
-    if start_book == end_book and start_chapter == end_chapter:
-        # Same chapter - iterate through verses
-        for v in range(start_verse, end_verse + 1):
-            verse_id = make_verse_id(start_book, start_chapter, v)
-            cursor.execute('''
-                INSERT OR IGNORE INTO verse (verse_id, book, chapter, verse)
-                VALUES (?, ?, ?, ?)
-            ''', (verse_id, start_book, start_chapter, v))
-            cursor.execute('''
-                INSERT OR IGNORE INTO verse_group (verse_group_id, verse_id)
-                VALUES (?, ?)
-            ''', (verse_group_id, verse_id))
+    if bible_data:
+        all_verses = expand_verse_range(start_book, start_chapter, start_verse, end_book, end_chapter, end_verse, bible_data)
     else:
-        # Complex range - just add start and end verse for now
-        # TODO: Handle multi-chapter/multi-book ranges properly
-        verse_id_start = make_verse_id(start_book, start_chapter, start_verse)
-        verse_id_end = make_verse_id(end_book, end_chapter, end_verse)
-
+        raise Exception("Bible data is required to expand verse ranges.")
+    # Insert all verses in the range
+    for book, chapter, verse in all_verses:
+        verse_id = make_verse_id(book, chapter, verse)
         cursor.execute('''
             INSERT OR IGNORE INTO verse (verse_id, book, chapter, verse)
             VALUES (?, ?, ?, ?)
-        ''', (verse_id_start, start_book, start_chapter, start_verse))
+        ''', (verse_id, book, chapter, verse))
         cursor.execute('''
             INSERT OR IGNORE INTO verse_group (verse_group_id, verse_id)
             VALUES (?, ?)
-        ''', (verse_group_id, verse_id_start))
-        
-        if verse_id_start != verse_id_end:
-            cursor.execute('''
-                INSERT OR IGNORE INTO verse (verse_id, book, chapter, verse)
-                VALUES (?, ?, ?, ?)
-            ''', (verse_id_end, end_book, end_chapter, end_verse))
-            cursor.execute('''
-                INSERT OR IGNORE INTO verse_group (verse_group_id, verse_id)
-                VALUES (?, ?)
-            ''', (verse_group_id, verse_id_end))
+        ''', (verse_group_id, verse_id))
     
     # Insert tag into 'tag' table if it doesn't exist
     cursor.execute('''
@@ -565,7 +640,7 @@ def delete_tag_tag(database_file, tag1, tag2):
     conn.close()
 
 
-def add_verse_note(database_file, verse_ref, note):
+def add_verse_note(database_file, verse_ref, note, bible_data):
     entry = verseNoteEntry(verse_ref, note)
     conn = sqlite3.connect(database_file)
     cursor = conn.cursor()
@@ -581,42 +656,23 @@ def add_verse_note(database_file, verse_ref, note):
     start_verse = int(entry["start_verse"])
     end_verse = int(entry["end_verse"])
     
-    # Handle verse range (could span multiple verses, chapters, or books)
-    if start_book == end_book and start_chapter == end_chapter:
-        # Same chapter - iterate through verses
-        for v in range(start_verse, end_verse + 1):
-            verse_id = make_verse_id(start_book, start_chapter, v)
-            cursor.execute('''
-                INSERT OR IGNORE INTO verse (verse_id, book, chapter, verse)
-                VALUES (?, ?, ?, ?)
-            ''', (verse_id, start_book, start_chapter, v))
-            cursor.execute('''
-                INSERT OR IGNORE INTO verse_group (verse_group_id, verse_id)
-                VALUES (?, ?)
-            ''', (verse_group_id, verse_id))
+    if bible_data:
+        all_verses = expand_verse_range(start_book, start_chapter, start_verse, 
+                                       end_book, end_chapter, end_verse, bible_data)
     else:
-        # Complex range - just add start and end verse for now
-        verse_id_start = make_verse_id(start_book, start_chapter, start_verse)
-        verse_id_end = make_verse_id(end_book, end_chapter, end_verse)
-        
+        raise Exception("Bible data is required to expand verse ranges.")
+
+    # Insert all verses in the range
+    for book, chapter, verse in all_verses:
+        verse_id = make_verse_id(book, chapter, verse)
         cursor.execute('''
             INSERT OR IGNORE INTO verse (verse_id, book, chapter, verse)
             VALUES (?, ?, ?, ?)
-        ''', (verse_id_start, start_book, start_chapter, start_verse))
+        ''', (verse_id, book, chapter, verse))
         cursor.execute('''
             INSERT OR IGNORE INTO verse_group (verse_group_id, verse_id)
             VALUES (?, ?)
-        ''', (verse_group_id, verse_id_start))
-        
-        if verse_id_start != verse_id_end:
-            cursor.execute('''
-                INSERT OR IGNORE INTO verse (verse_id, book, chapter, verse)
-                VALUES (?, ?, ?, ?)
-            ''', (verse_id_end, end_book, end_chapter, end_verse))
-            cursor.execute('''
-                INSERT OR IGNORE INTO verse_group (verse_group_id, verse_id)
-                VALUES (?, ?)
-            ''', (verse_group_id, verse_id_end))
+        ''', (verse_group_id, verse_id))
     
     # Check if a note already exists for this verse_group_id in verse_note
     cursor.execute('SELECT note_id FROM verse_note WHERE verse_group_id = ?', (verse_group_id,))
