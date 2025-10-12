@@ -1191,7 +1191,6 @@ if __name__ == "__main__":
     config_filename = "config.cfg"
     if not os.path.exists(config_filename):
         print("no config file found. If you want to auto-load your json and bdb, make a config.cfg with both file paths in the program folder.")
-    else:
         with open(config_filename, 'w') as f:
             f.write("")
 
