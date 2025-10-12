@@ -11,7 +11,6 @@ import os
 import configparser
 
 textlinegap = 2
-windowsize = "1000x600"
 textelbowroom = 10 #that's "elbow room" for left and right spacing
 bible_data = {}
 
@@ -35,7 +34,7 @@ def wrapText(text, width, font):
 
 
 class BibleTaggerApp:
-    def __init__(self, master):
+    def __init__(self, master, initial_window_size = "1000x600"):
         self.master = master
         global bible_data, windowsize
 
@@ -1188,47 +1187,49 @@ class TaggerPanel:
 
 
 if __name__ == "__main__":
-    
-    root = tk.Tk()
-    root.title("Bible Tagger")
-    root.iconbitmap("./bibletaggericon.ico")
-
-    bta = BibleTaggerApp(root)
 
     config_filename = "config.cfg"
     if not os.path.exists(config_filename):
         print("no config file found. If you want to auto-load your json and bdb, make a config.cfg with both file paths in the program folder.")
     else:
+        with open(config_filename, 'w') as f:
+            f.write("")
+
+    cfg = configparser.ConfigParser()
+    cfg.read(config_filename)
+    jsonpath = cfg.get('DEFAULT', 'json_path', fallback=None)
+    bdbpath = cfg.get('DEFAULT', 'bdb_path', fallback=None)
+
+    initial_window_size = cfg.get('DEFAULT', 'initial_window_size', fallback="1000x600")
+
+    root = tk.Tk()
+    root.title("Bible Tagger")
+    root.iconbitmap("./bibletaggericon.ico")
+
+    bta = BibleTaggerApp(root, initial_window_size)
+
+    try:
+        bta.load_json(jsonpath)
+    except Exception as e:
+        print("Failed to load JSON file from config:", e)
         jsonpath = None
+
+    try:
+        # Check if bdb file exists, if not create it with proper tables
+        if bdbpath and not os.path.exists(bdbpath):
+            print(f"BDB file not found at {bdbpath}. Creating new database...")
+            # Create directory if it doesn't exist
+            bdb_dir = os.path.dirname(bdbpath)
+            if bdb_dir and not os.path.exists(bdb_dir):
+                os.makedirs(bdb_dir)
+            # Create empty file and initialize database tables
+            with open(bdbpath, 'w') as f:
+                f.write("")
+            bibledb_lib.makeDB(bdbpath)
+            print(f"Created new database at {bdbpath}")
+        bta.load_bdb(bdbpath)
+    except Exception as e:
+        print("Failed to load BDB file from config:", e)
         bdbpath = None
-        
-        cfg = configparser.ConfigParser()
-        cfg.read(config_filename)
-        jsonpath = cfg.get('DEFAULT', 'jsonpath', fallback=None)
-        bdbpath = cfg.get('DEFAULT', 'bdbpath', fallback=None)
-
-        try:
-            bta.load_json(jsonpath)
-        except Exception as e:
-            print("Failed to load JSON file from config:", e)
-            jsonpath = None
-
-        try:
-            # Check if bdb file exists, if not create it with proper tables
-            if bdbpath and not os.path.exists(bdbpath):
-                print(f"BDB file not found at {bdbpath}. Creating new database...")
-                # Create directory if it doesn't exist
-                bdb_dir = os.path.dirname(bdbpath)
-                if bdb_dir and not os.path.exists(bdb_dir):
-                    os.makedirs(bdb_dir)
-                # Create empty file and initialize database tables
-                with open(bdbpath, 'w') as f:
-                    f.write("")
-                bibledb_lib.makeDB(bdbpath)
-                print(f"Created new database at {bdbpath}")
-            bta.load_bdb(bdbpath)
-        except Exception as e:
-            print("Failed to load BDB file from config:", e)
-            bdbpath = None
 
     root.mainloop()
