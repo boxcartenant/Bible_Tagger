@@ -1123,7 +1123,7 @@ class TaggerPanel:
         
         global open_db_file
         open_db_file = file_path
-        if no_verse:
+        if not no_verse:
             # item = "verseClick" if a verse was clicked
             # data = {"verse": the verse text, "ref": the verse reference}
             try:
