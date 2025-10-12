@@ -175,8 +175,8 @@ class NavigationTree:
     #leftmost panel on the main window
     def __init__(self, master, paned_window, tree_callback, db_explorer_callback, weight=1):
         self.master = master
-        global data_model
-        self.data_model_loaded = False
+        global bible_data
+        self.bible_data_loaded = False
         self.paned_window = paned_window
         self.tree_item_data = {}
         self.treeFont = Font()
@@ -298,20 +298,20 @@ class NavigationTree:
             pass 
 
     def load_json(self, bible_file_path):
-        global data_model
+        global bible_data
         with open(bible_file_path, 'r') as file:
             bible_file_content = file.read()
-            data_model = bibledb_lib.getBibleData(bible_file_content)
+            bible_data = bibledb_lib.getBibleData(bible_file_content)
         #print("dumping output from open_file_dialog")
-        #print(data_model)
-        self.populate_tree(data_model, '')
-        self.data_model_loaded = True
+        #print(bible_data)
+        self.populate_tree(bible_data, '')
+        self.bible_data_loaded = True
         self.open_button.configure(text = "Explore DB")
     
     def open_file_dialog(self):
         #button to open a Bible file
-        global data_model
-        if not self.data_model_loaded:#First time clicked, load a bible db.
+        global bible_data
+        if not self.bible_data_loaded:#First time clicked, load a bible db.
             file_path = filedialog.askopenfilename(defaultextension=".json", filetypes=[("JSON Bibles", "*.json"), ("All files", "*.*")])
             if file_path and file_path[-5:] == '.json':
                 print(f"Selected file: {file_path}")
@@ -327,7 +327,7 @@ class ScripturePanel:
     def __init__(self, master, paned_window, canvas_callback):
         self.canvas_callback = canvas_callback
         self.master = master
-        global data_model, open_db_file
+        global bible_data, open_db_file
         self.paned_window = paned_window
         self.canvasFont = Font(size = 10)
         self.italicFont = Font(size = 10, slant = 'italic')
@@ -718,7 +718,7 @@ class TaggerPanel:
         self.cause_canvas_to_refresh = cause_canvas_to_refresh
         self.update_tree_colors = update_tree_colors
         self.master = master
-        global data_model, open_db_file
+        global bible_data, open_db_file
         self.paned_window = paned_window
         self.canvasFont = Font(size = 10)
         self.italicFont = Font(size = 10, slant = 'italic')

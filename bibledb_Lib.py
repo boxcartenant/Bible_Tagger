@@ -429,6 +429,7 @@ def add_verse_tag(database_file, verse_ref, tag_name, bible_data):
         all_verses = expand_verse_range(start_book, start_chapter, start_verse, end_book, end_chapter, end_verse, bible_data)
     else:
         raise Exception("Bible data is required to expand verse ranges.")
+
     # Insert all verses in the range
     for book, chapter, verse in all_verses:
         verse_id = make_verse_id(book, chapter, verse)
@@ -656,10 +657,9 @@ def add_verse_note(database_file, verse_ref, note, bible_data):
     end_chapter = int(entry["end_chapter"])
     start_verse = int(entry["start_verse"])
     end_verse = int(entry["end_verse"])
-    
+
     if bible_data:
-        all_verses = expand_verse_range(start_book, start_chapter, start_verse, 
-                                       end_book, end_chapter, end_verse, bible_data)
+        all_verses = expand_verse_range(start_book, start_chapter, start_verse, end_book, end_chapter, end_verse, bible_data)
     else:
         raise Exception("Bible data is required to expand verse ranges.")
 
