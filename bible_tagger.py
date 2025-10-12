@@ -1156,18 +1156,19 @@ class TaggerPanel:
             messagebox.showwarning("No Database", "No database file is currently open.\nUse 'Save As...' to create a new database.")
     
     def save_db_as(self, event):
+        global open_db_file
+
         file_path = filedialog.asksaveasfilename(defaultextension=".bdb", filetypes=[("Sqlite Bible Files", "*.bdb"), ("All files", "*.*")])
 
         if file_path:
-            with open(file_path, 'w') as file:
-                # Create the file if it doesn't exist
-                file.write("")
-            bibledb_lib.makeDB(file_path)
-            global open_db_file
-            open_db_file = file_path
-            self.display_attributes()
-            self.cause_canvas_to_refresh()
-            print(f"Selected or created file: {file_path}")
+            if open_db_file is None:
+                with open(file_path, 'w') as f:
+                    f.write("")
+                    bibledb_lib.makeDB(file_path)
+            else:
+                bibledb_lib.copy_db(open_db_file, file_path)
+            self.load_bdb(file_path)
+            print(f"Database saved as: {file_path}")
     
     def merge_dbs(self, event):
         # TODO: Implement database merge functionality

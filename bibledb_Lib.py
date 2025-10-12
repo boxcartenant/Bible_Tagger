@@ -31,9 +31,12 @@ def qualifyBook(book_name):
         
     return None
 
-def merge_dbs(current_db_path, new_db_path):
-    print("Merge DBs functionality not yet implemented")
-    pass
+def copy_db(source_path, dest_path):
+    source = sqlite3.connect(source_path)
+    dest = sqlite3.connect(dest_path)
+    source.backup(dest)
+    source.close()
+    dest.close()
 
 def normalize_vref(passage):
     # takes a verse reference in the form (1,1,1,2,2,2) like what we get from the verses db
