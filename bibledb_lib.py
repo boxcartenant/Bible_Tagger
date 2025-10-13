@@ -4,6 +4,28 @@ import sqlite3
 # update this when breaking schema changes are made, prevents attempting to merge incompatible databases
 CURRENT_DATABASE_VERSION = 1
 
+def get_database_version(database_file):
+    """Get the user_version (schema version) of a database file.
+    
+    Args:
+        database_file: Path to the .bdb database file
+        
+    Returns:
+        Integer version number, or 0 if database doesn't exist or has error
+    """
+    if not database_file:
+        return None
+    
+    try:
+        conn = sqlite3.connect(database_file)
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA user_version")
+        version = cursor.fetchone()[0]
+        conn.close()
+        return version
+    except Exception:
+        return None
+
 
 ####  HOW TO USE:
 # first call getBibleData on a valid bible json

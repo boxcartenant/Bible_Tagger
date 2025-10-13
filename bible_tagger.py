@@ -8,7 +8,9 @@ from tkinter import messagebox
 from bibledb_explorer import DBExplorer
 from bibledb_explorer import TagInputDialog, combineVRefs
 import os
+import sys
 import configparser
+import argparse
 
 textlinegap = 2
 textelbowroom = 6 #that's "elbow room" for left and right spacing
@@ -1307,18 +1309,292 @@ class TaggerPanel:
 
 if __name__ == "__main__":
 
+    parser = argparse.ArgumentParser(description="Bible Tagger")
+
+    subparsers = parser.add_subparsers(dest="command", required=False)
+
+    # migrate
+    migrate_parser = subparsers.add_parser("migrate", help="Migrate old database")
+    migrate_parser.add_argument("old_db", nargs='?', help="Path to old database to migrate (defaults to database in config)")
+
+    # config
+    config_parser = subparsers.add_parser("config", help="Manage configuration files")
+    config_sub = config_parser.add_subparsers(dest="action")
+    config_sub.add_parser("new", help="Create new configuration file")
+    config_sub.add_parser("update", help="Update current configuration file with options from newest template")
+    config_sub.add_parser("validate", help="Validate current configuration file")
+
+    # scrape
+    scrape_parser = subparsers.add_parser("scrape", help="Scrape bible translation for use with Bible Tagger")
+    scrape_parser.add_argument("version", help="Version to scrape")
+
+    args = parser.parse_args()
+
+    template_filename = f'template.{config_filename}'
+
+    def create_config():
+        with open(template_filename, 'r') as template_file:
+            template_content = template_file.read()
+        with open(config_filename, 'w') as config_file:
+            config_file.write(template_content)
+
+    def update_config():
+        """Update config file with missing options from template"""
+        if not os.path.exists(config_filename):
+            print(f"Config file not found: {config_filename}")
+            print("Creating new config file...")
+            create_config()
+            return
+        
+        # Read existing config and template
+        existing_config = configparser.ConfigParser()
+        existing_config.read(config_filename)
+        
+        template_config = configparser.ConfigParser()
+        template_config.read(f'template.{config_filename}')
+        
+        updated = False
+        # Add missing sections and options from template
+        for section in template_config.sections():
+            if not existing_config.has_section(section):
+                existing_config.add_section(section)
+                print(f"Added missing section: [{section}]")
+                updated = True
+            
+            for option in template_config.options(section):
+                if not existing_config.has_option(section, option):
+                    value = template_config.get(section, option)
+                    existing_config.set(section, option, value)
+                    print(f"Added missing option: {option} in [{section}]")
+                    updated = True
+        
+        # Also check DEFAULT section
+        for option in template_config.defaults():
+            if option not in existing_config.defaults():
+                value = template_config.get('DEFAULT', option)
+                existing_config.set('DEFAULT', option, value)
+                print(f"Added missing option: {option} in [DEFAULT]")
+                updated = True
+        
+        if updated:
+            with open(config_filename, 'w') as config_file:
+                existing_config.write(config_file)
+            print(f"Config file updated")
+        else:
+            print(f"Config file is up to date")
+    
+    def validate_config():
+        """Validate config file against template for missing or malformed options"""
+        if not os.path.exists(config_filename):
+            print(f"Config file not found: {config_filename}")
+            print("Run 'python bible_tagger.py config new' to create one")
+            return False
+        
+        if not os.path.exists(template_filename):
+            print(f"Template file not found: {template_filename}")
+            print("Cannot validate without template")
+            return False
+        
+        # Read config file
+        cfg_check = configparser.ConfigParser()
+        try:
+            cfg_check.read(config_filename)
+        except Exception as e:
+            print(f"Error reading config file: {e}")
+            return False
+        
+        # Read template file
+        template_config = configparser.ConfigParser()
+        try:
+            template_config.read(template_filename)
+        except Exception as e:
+            print(f"Error reading template file: {e}")
+            return False
+
+        valid = True
+        
+        # Check for missing sections (excluding DEFAULT which is implicit)
+        for section in template_config.sections():
+            if not cfg_check.has_section(section):
+                print(f"Missing section: [{section}]")
+                valid = False
+        
+        # Check for missing options in each section
+        for section in template_config.sections():
+            if cfg_check.has_section(section):
+                for option in template_config.options(section):
+                    if not cfg_check.has_option(section, option):
+                        print(f"Missing option in [{section}]: {option}")
+                        valid = False
+        
+        # Check DEFAULT section options
+        for option in template_config.defaults():
+            if option not in cfg_check.defaults():
+                print(f"Missing option in [DEFAULT]: {option}")
+                valid = False
+        
+        # Validate boolean values (use_last_db)
+        if cfg_check.has_option('DEFAULT', 'use_last_db'):
+            try:
+                use_last_db = cfg_check.get('DEFAULT', 'use_last_db')
+                if use_last_db.strip() and use_last_db.lower() not in ['true', 'false', '1', '0', 'yes', 'no']:
+                    print(f"Invalid boolean value for use_last_db: '{use_last_db}'")
+                    print("   Expected: true, false, yes, no, 1, or 0")
+                    valid = False
+            except Exception as e:
+                print(f"Error validating use_last_db: {e}")
+                valid = False
+        
+        # Check file paths if specified (warnings only, not errors)
+        json_path = cfg_check.get('DEFAULT', 'json_path', fallback=None)
+        if json_path and json_path.strip() and json_path not in ['#', '# relative or absolute path']:
+            if not os.path.exists(json_path):
+                print(f"Info: JSON file not found: {json_path}")
+                print("   (This is just a warning - you can set it later)")
+        
+        bdb_path = cfg_check.get('DEFAULT', 'bdb_path', fallback=None)
+        if bdb_path and bdb_path.strip() and bdb_path not in ['./MyDB.bdb', '# relative or absolute path']:
+            if not os.path.exists(bdb_path):
+                print(f"Info: BDB file not found: {bdb_path}")
+                print("   (This is just a warning - file will be created when needed)")
+        
+        if valid:
+            print(f"Config file is valid")
+        else:
+            print(f"\nConfig file has issues")
+            print("Run 'python bible_tagger.py config update' to fix missing options")
+        
+        return valid
+
+    if args.command == "config":
+        if args.action == "new":
+            if os.path.exists(config_filename):
+                response = input(f"Error: Config file already exists: {config_filename}")
+            else:
+                create_config()
+                print(f"Config file created: {config_filename}")
+        elif args.action == "update":
+            update_config()
+        elif args.action == "validate":
+            validate_config()
+
     if not os.path.exists(config_filename):
-        print("no config file found. If you want to auto-load your json and bdb, make a config.cfg with both file paths in the program folder.")
-        with open(config_filename, 'w') as f:
-            f.write("")
+        create_config()
 
-    cfg = configparser.ConfigParser()
-    cfg.read(config_filename)
+    if args.command is None:
+        cfg = configparser.ConfigParser()
+        cfg.read(config_filename)
 
-    root = tk.Tk()
-    root.title("Bible Tagger")
-    root.iconbitmap("./bibletaggericon.ico")
+        root = tk.Tk()
+        root.title("Bible Tagger")
+        root.iconbitmap("./bibletaggericon.ico")
 
-    bta = BibleTaggerApp(root)
+        bta = BibleTaggerApp(root)
 
-    root.mainloop()
+        root.mainloop()
+    elif args.command == "migrate":
+        # Determine which database to migrate
+        if hasattr(args, 'old_db') and args.old_db:
+            db_to_migrate = args.old_db
+        else:
+            # Use database from config file
+            cfg_temp = configparser.ConfigParser()
+            cfg_temp.read(config_filename)
+            db_to_migrate = cfg_temp.get('DEFAULT', 'bdb_path', fallback=None)
+            
+            if not db_to_migrate:
+                print("Error: No database specified and no database found in config file")
+                print("Usage: python bible_tagger.py migrate <database_path>")
+                sys.exit(1)
+        
+        if not os.path.exists(db_to_migrate):
+            print(f"✗ Error: Database file not found: {db_to_migrate}")
+            sys.exit(1)
+        
+        # Check current database version
+        current_version = bibledb_lib.get_database_version(db_to_migrate)
+        target_version = bibledb_lib.CURRENT_DATABASE_VERSION
+
+        if current_version == target_version:
+            print(f"Database is already at version {target_version}")
+            sys.exit(0)
+
+        if current_version > target_version:
+            print(f"Error: Database version ({current_version}) is newer than expected ({target_version})")
+            print("This may happen if you're using an older version of Bible Tagger")
+            sys.exit(1)
+
+        # Find migration path
+        migration_dir = "db_migration"
+        if not os.path.exists(migration_dir):
+            print(f"Error: Migration directory not found: {migration_dir}")
+            sys.exit(1)
+
+        print(f"Database: {db_to_migrate}")
+        print(f"Current version: {current_version}")
+        print(f"Target version: {target_version}")
+
+        # Build migration chain
+        migration_chain = []
+        current = current_version
+
+        while current < target_version:
+            next_version = current + 1
+            migration_file = os.path.join(migration_dir, f"{current}-to-{next_version}.py")
+            
+            if not os.path.exists(migration_file):
+                print(f"Error: Missing migration script: {migration_file}")
+                print(f"Cannot migrate from version {current} to {next_version} in order to get to version {target_version}")
+                sys.exit(1)
+
+            migration_chain.append((current, next_version, migration_file))
+            current = next_version
+
+        # Display migration plan
+        print(f"\nMigration plan:")
+        for from_ver, to_ver, script in migration_chain:
+            print(f"  {from_ver} → {to_ver}: {script}")
+
+        print(f"\nThis will migrate the database through {len(migration_chain)} step(s)")
+        response = input("Continue? (y/N): ")
+        if response.lower() != 'y':
+            print("Migration cancelled")
+            sys.exit(0)
+
+        # Execute migrations
+        for index, (from_ver, to_ver, script) in enumerate(migration_chain):
+            print(f"\n{'='*60}")
+            print(f"Executing migration: {from_ver} → {to_ver}")
+            print(f"{'='*60}")
+
+            # Import and run the migration script
+            import importlib.util
+            spec = importlib.util.spec_from_file_location(f"migration_{from_ver}_to_{to_ver}", script)
+            migration_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(migration_module)
+
+            # Call the migrate_database function from the migration script
+            # Only create backup for the first migration in the chain
+            if hasattr(migration_module, 'migrate_database'):
+                create_backup = (index == 0)  # Only backup on first migration
+                success = migration_module.migrate_database(db_to_migrate, create_backup=create_backup)
+                if not success:
+                    print(f"\nMigration failed at step {from_ver} → {to_ver}")
+                    sys.exit(1)
+            else:
+                print(f"Error: Migration script {script} does not have migrate_database function")
+                sys.exit(1)
+        
+        print(f"\n{'='*60}")
+        print(f"All migrations completed successfully!")
+        print(f"{'='*60}")
+        print(f"Database is now at version {target_version}")
+        sys.exit(0)
+    elif args.command == "scrape":
+        print(f"Scraping Bible version: {args.version}")
+        print("\nScraping not yet implemented.")
+        print("\nThis feature will allow you to scrape Bible translations from online sources")
+        print("and convert them to JSON format for use with Bible Tagger.")
+        print("\nFor now, you can use the SWORD-to-JSON converter in the project folder.")
+        sys.exit(1)
+
