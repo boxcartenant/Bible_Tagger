@@ -268,17 +268,13 @@ class BibleTaggerApp:
         marked_chapters = bibledb_lib.find_note_tag_chapters(open_db_file)
         #recolor all the chapters that have content
         self.navigation_tree.recolor(marked_chapters)
-        pass
-        
-        
-        
+
     def tree_callback(self, item, data, reset_scrollbar):
         # handle canvas-related actions caused by tree interactions here
         # You can call the CanvasView methods to update the canvas
         # For example, self.scripture_panel.display_attributes(attributes)
         self.scripture_panel.display_chapter(item, data, reset_scrollbar)
         #self.scripture_panel.reset_scrollregion(item)
-        
 
     def canvas_callback(self, item, data, shift_key = False):
         # item is either "verseClick" or "tagClick", depending on what was clicked.
@@ -338,7 +334,6 @@ class NavigationTree:
     def __init__(self, bta, weight=1):
         global bible_data
         self.bta = bta
-        self.bible_data_loaded = False
         self.tree_item_data = {}
         self.treeFont = Font()
         self.marked_chapters = []
@@ -363,7 +358,7 @@ class NavigationTree:
         self.db_buttons_frame.grid(row=2, column=0, columnspan=2, sticky="ew", pady=5)
         
         # Create DB buttons
-        self.load_db_button = tk.Button(self.db_buttons_frame, text="Load Bible", command=self.open_file_dialog)
+        self.load_db_button = tk.Button(self.db_buttons_frame, text="Load Bible", command=self.load_bible)
         self.load_db_button.grid(row=0, column=0, sticky="ew", padx=2)
 
         self.load_db_button = tk.Button(self.db_buttons_frame, text="Load DB", command=self.bta.load_db)
@@ -402,26 +397,35 @@ class NavigationTree:
                 i += 1
 
     def recolor(self, marked_chapters):
-        #self.tree.tag_configure("allchapters",foreground='black')
-        blue_chapters = list(set(marked_chapters) - set(self.marked_chapters))
-        black_chapters = list(set(self.marked_chapters) - set(marked_chapters))
-        blue_books = {self.tree.parent(chapter) for chapter in blue_chapters}
-        black_books = {self.tree.parent(chapter) for chapter in black_chapters}
-        
-        for chapter in blue_chapters:
-            self.tree.tag_configure(chapter,foreground='blue')
-        for chapter in black_chapters:
-            self.tree.tag_configure(chapter,foreground='black')
-
-        for book in blue_books:
-            self.tree.item(book, tags=("blue_book",))
-        for book in black_books:
-            self.tree.item(book, tags=("black_book",))
+        # Configure tag colors first
         self.tree.tag_configure("blue_book", foreground='blue')
         self.tree.tag_configure("black_book", foreground='black')
         
+        # Determine which chapters changed
+        blue_chapters = list(set(marked_chapters) - set(self.marked_chapters))
+        black_chapters = list(set(self.marked_chapters) - set(marked_chapters))
+        
+        # Color changed chapters
+        for chapter in blue_chapters:
+            self.tree.tag_configure(chapter, foreground='blue')
+        for chapter in black_chapters:
+            self.tree.tag_configure(chapter, foreground='black')
+        
+        # Update book colors based on ALL currently marked chapters
+        all_marked_books = {self.tree.parent(chapter) for chapter in marked_chapters}
+        all_books = {self.tree.parent(item) for item in self.tree.get_children() 
+                     for item in self.tree.get_children(item)}
+        unmarked_books = all_books - all_marked_books
+        
+        for book in all_marked_books:
+            if book:  # Check book exists
+                self.tree.item(book, tags=("blue_book",))
+        for book in unmarked_books:
+            if book:  # Check book exists
+                self.tree.item(book, tags=("black_book",))
+        
         self.marked_chapters = marked_chapters
-        root.update()
+        self.tree.update_idletasks()
 
     def select_item(self, item_path, reset_scroll_region = True):
         path_elements = item_path.split("/")
@@ -479,25 +483,25 @@ class NavigationTree:
             bible_data = bibledb_lib.getBibleData(bible_file_content)
         #print("dumping output from open_file_dialog")
         #print(bible_data)
+        
+        # Clear existing tree items before loading new Bible
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+        self.tree_item_data.clear()
+        
         self.populate_tree(bible_data, '')
-        self.bible_data_loaded = True
-        # this is a good place to do any config after bible json is loaded. e.g....
-        # self.explore_db_button.configure(text = "Explore DB")
+        self.bta.cause_canvas_to_refresh()
+        self.bta.update_tree_colors()
     
-    def open_file_dialog(self):
+    def load_bible(self):
         #button to open a Bible file
         global bible_data
-        if not self.bible_data_loaded:#First time clicked, load a bible db.
-            file_path = filedialog.askopenfilename(defaultextension=".json", filetypes=[("JSON Bibles", "*.json"), ("All files", "*.*")])
-            if file_path and file_path[-5:] == '.json':
-                print(f"Selected file: {file_path}")
-                self.load_json(file_path)
-            else:
-                print("Invalid file! It's gotta be a json file. Funny thing about this: you could use this program to make notes about any kind of JSON data which is organized in a way similar to a supported Bible JSON file.")
-        else:#subsequent clicks, open the db explorer
-            #if self.db_explorer is None or not self.db_explorer.winfo_exists():
-                # Create the secondary window if it doesn't exist or has been destroyed
-            self.db_explorer.show(self.db_explorer_callback, open_db_file);
+        file_path = filedialog.askopenfilename(defaultextension=".json", filetypes=[("JSON Bibles", "*.json"), ("All files", "*.*")])
+        if file_path and file_path[-5:] == '.json':
+            #print(f"Selected file: {file_path}")
+            self.load_json(file_path)
+        else:
+            print("Invalid file! It's gotta be a json file. Funny thing about this: you could use this program to make notes about any kind of JSON data which is organized in a way similar to a supported Bible JSON file.")
 
 class ScripturePanel:
     def __init__(self, bta):
