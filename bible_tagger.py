@@ -68,9 +68,9 @@ class BibleTaggerApp:
         # Load and apply saved sash positions after window is ready
         # Default sash positions: left panel ~250px, right panel ~250px from right
         try:
-            right_sash = cfg.getint('INTERNAL', 'sash_position', fallback=250)
+            right_sash = cfg.getint('INTERNAL', 'sash_position', fallback=500)
         except:
-            right_sash = 250
+            right_sash = 500
         self.master.after(100, lambda: self.restore_sash_position(right_sash))
         self.master.after(110, lambda: self.tagger_panel.display_attributes(None))
 
@@ -363,17 +363,20 @@ class NavigationTree:
         self.db_buttons_frame.grid(row=2, column=0, columnspan=2, sticky="ew", pady=5)
         
         # Create DB buttons
-        self.load_db_button = tk.Button(self.db_buttons_frame, text="Load DB", command=self.bta.load_db)
+        self.load_db_button = tk.Button(self.db_buttons_frame, text="Load Bible", command=self.open_file_dialog)
         self.load_db_button.grid(row=0, column=0, sticky="ew", padx=2)
 
-        self.new_db_button = tk.Button(self.db_buttons_frame, text="New DB", command=self.bta.new_db)
-        self.new_db_button.grid(row=0, column=1, sticky="ew", padx=2)
+        self.load_db_button = tk.Button(self.db_buttons_frame, text="Load DB", command=self.bta.load_db)
+        self.load_db_button.grid(row=0, column=1, sticky="ew", padx=2)
 
         self.save_db_as_button = tk.Button(self.db_buttons_frame, text="Save DB As...", command=self.bta.save_db_as)
         self.save_db_as_button.grid(row=0, column=2, sticky="ew", padx=2)
+        
+        self.new_db_button = tk.Button(self.db_buttons_frame, text="New DB", command=self.bta.new_db)
+        self.new_db_button.grid(row=1, column=0, sticky="ew", padx=2)
 
         self.merge_dbs_button = tk.Button(self.db_buttons_frame, text="Merge DB...", command=self.bta.merge_dbs)
-        self.merge_dbs_button.grid(row=1, column=0, columnspan=2, sticky="ew", padx=2, pady=2)
+        self.merge_dbs_button.grid(row=1, column=1, columnspan=1, sticky="ew", padx=2, pady=2)
 
         self.explore_db_button = tk.Button(self.db_buttons_frame, text="Explore DB", command=lambda: self.bta.db_explorer.show(self.bta.db_explorer_callback, open_db_file))
         self.explore_db_button.grid(row=1, column=2, sticky="ew", padx=2, pady=2)
@@ -478,7 +481,8 @@ class NavigationTree:
         #print(bible_data)
         self.populate_tree(bible_data, '')
         self.bible_data_loaded = True
-        self.explore_db_button.configure(text = "Explore DB")
+        # this is a good place to do any config after bible json is loaded. e.g....
+        # self.explore_db_button.configure(text = "Explore DB")
     
     def open_file_dialog(self):
         #button to open a Bible file
