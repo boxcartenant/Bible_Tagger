@@ -130,7 +130,7 @@ class BibleTaggerApp:
             with open(config_filename, 'w') as configfile:
                 cfg.write(configfile)
         
-    def load_db(self, event):
+    def load_db(self):
         # Implement your logic to open the browse window and load the database
         file_path = filedialog.askopenfilename(defaultextension=".bdb", filetypes=[("Sqlite Bible Files", "*.bdb"), ("All files", "*.*")])
         if file_path:
