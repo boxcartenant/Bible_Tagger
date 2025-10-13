@@ -36,6 +36,11 @@ I programmed this around the output of SWORD-to-JSON. Here's the link to that: h
 
 - Need universally unique way to identify book/chapter/verse across translations and even languages
     - Make verse references in the DB more explicit so that the tool will accommodate switching between translations with missing verses
+- Notes viewer
+- CLI command to migrate db
+- CLI command to recreate config
+- Create config if missing
+- CLI Scrape command
 - Use ffariajr's bible_scraper format
 
 # Getting Started
