@@ -1038,8 +1038,11 @@ class TaggerPanel:
         self.boldFont = Font(size = 10, weight = 'bold')
         self.current_data = None
         self.current_item = None
-        self.previous_verse_data = None  # Store previous verse when switching to tag view
-        self.previous_verse_item = None
+        
+        # Navigation history system
+        self.navigation_history = []  # List of (item, data) tuples
+        self.navigation_index = -1    # Current position in history (-1 = no history)
+        self.is_navigating = False    # Flag to prevent adding to history during back/forward
         
         global open_db_file
 
@@ -1095,15 +1098,6 @@ class TaggerPanel:
         if item == None:
             item = self.current_item
         else:
-            # Save previous verse state when switching to tag view
-            if item == "tagClick" and self.current_item == "verseClick":
-                self.previous_verse_data = self.current_data
-                self.previous_verse_item = self.current_item
-            # When switching back to verse view (not from tag click), clear previous verse
-            elif item == "verseClick" and self.current_item != "tagClick":
-                self.previous_verse_data = None
-                self.previous_verse_item = None
-            
             self.current_item = item
             
         #get the verse reference and store in self.current_data['ref']
@@ -1119,6 +1113,26 @@ class TaggerPanel:
             self.current_data = data
         else:
             data = self.current_data
+        
+        # Add new state to navigation history (unless we're navigating with back/forward)
+        # This happens AFTER we've updated current_item and current_data
+        if not self.is_navigating and self.current_item is not None and self.current_data is not None:
+            # Check if this state is different from the current history position
+            should_add = True
+            if self.navigation_index >= 0 and self.navigation_index < len(self.navigation_history):
+                # Check if we're already at this exact state
+                hist_item, hist_data = self.navigation_history[self.navigation_index]
+                if hist_item == self.current_item and hist_data == self.current_data:
+                    should_add = False
+            
+            if should_add:
+                # If we're in the middle of history (navigated back), truncate forward history
+                if self.navigation_index < len(self.navigation_history) - 1:
+                    self.navigation_history = self.navigation_history[:self.navigation_index + 1]
+                
+                # Add new state to history
+                self.navigation_history.append((self.current_item, self.current_data.copy() if isinstance(self.current_data, dict) else self.current_data))
+                self.navigation_index = len(self.navigation_history) - 1
 
         #Clear the canvas
         self.canvas.delete("all")
@@ -1149,22 +1163,57 @@ class TaggerPanel:
             
         self.canvas.create_text(x_offset, y_offset, text=title_text, anchor=tk.W, font=self.boldFont)
         
-        # Show back button when in tag view and there's a previous verse to go back to
-        if self.current_item == "tagClick" and self.previous_verse_data is not None:
-            back_button_text = "← Back to Verse"
-            back_button_width = self.canvasFont.measure(back_button_text) + 2*textelbowroom
-            back_button_x = panelWidth - back_button_width - 5  # Right-aligned with 5px margin
-            
-            back_button_rect = self.canvas.create_rectangle(
-                back_button_x, y_offset, 
-                back_button_x + back_button_width, y_offset + textlineheight + 2*textelbowroom, 
-                fill='lightblue', tags='back_button'
-            )
-            back_button_text_obj = self.canvas.create_text(
-                back_button_x + textelbowroom, y_offset + textelbowroom, 
-                text=back_button_text, anchor=tk.NW, font=self.canvasFont, tags='back_button'
-            )
-            self.canvas.tag_bind('back_button', '<Button-1>', self.go_back_to_verse)
+        # Show navigation buttons (back and forward) - always visible, disabled when unavailable
+        button_spacing = 5  # Space between buttons
+        base_button_height = textlineheight + 2*textelbowroom
+        button_height = int(base_button_height * 0.8)  # 80% height
+        button_y_offset = y_offset + (base_button_height - button_height) // 2  # Center vertically
+        
+        # Forward button (rightmost)
+        forward_button_text = "→"
+        forward_base_width = self.canvasFont.measure(forward_button_text) + 2*textelbowroom
+        forward_button_width = int(forward_base_width * 2.0)  # 200% width
+        forward_button_x = panelWidth - 5 - forward_button_width
+        
+        # Determine if button should be enabled or disabled
+        forward_enabled = self.can_go_forward()
+        forward_color = 'lightgreen' if forward_enabled else 'lightgray'
+        forward_text_color = 'black' if forward_enabled else 'gray'
+        
+        self.canvas.create_rectangle(
+            forward_button_x, button_y_offset, 
+            forward_button_x + forward_button_width, button_y_offset + button_height, 
+            fill=forward_color, tags='forward_button'
+        )
+        self.canvas.create_text(
+            forward_button_x + forward_button_width // 2, button_y_offset + button_height // 2, 
+            text=forward_button_text, font=self.canvasFont, fill=forward_text_color, tags='forward_button'
+        )
+        if forward_enabled:
+            self.canvas.tag_bind('forward_button', '<Button-1>', self.go_forward)
+        
+        # Back button (to the left of forward button)
+        back_button_text = "←"
+        back_base_width = self.canvasFont.measure(back_button_text) + 2*textelbowroom
+        back_button_width = int(back_base_width * 2.0)  # 200% width
+        back_button_x = forward_button_x - button_spacing - back_button_width
+        
+        # Determine if button should be enabled or disabled
+        back_enabled = self.can_go_back()
+        back_color = 'lightblue' if back_enabled else 'lightgray'
+        back_text_color = 'black' if back_enabled else 'gray'
+        
+        self.canvas.create_rectangle(
+            back_button_x, button_y_offset, 
+            back_button_x + back_button_width, button_y_offset + button_height, 
+            fill=back_color, tags='back_button'
+        )
+        self.canvas.create_text(
+            back_button_x + back_button_width // 2, button_y_offset + button_height // 2, 
+            text=back_button_text, font=self.canvasFont, fill=back_text_color, tags='back_button'
+        )
+        if back_enabled:
+            self.canvas.tag_bind('back_button', '<Button-1>', self.go_back)
         
         y_offset += boldlineheight + textlinegap + 10
         
@@ -1360,15 +1409,37 @@ class TaggerPanel:
         
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
 
-    def go_back_to_verse(self, event):
-        """Go back to the previously viewed verse from tag view"""
-        if self.previous_verse_data is not None and self.previous_verse_item is not None:
-            # Restore the previous verse view
-            self.display_attributes(self.previous_verse_item, self.previous_verse_data, False)
+    def can_go_back(self):
+        """Check if we can navigate backward in history"""
+        return self.navigation_index > 0
+    
+    def can_go_forward(self):
+        """Check if we can navigate forward in history"""
+        return self.navigation_index < len(self.navigation_history) - 1
+    
+    def go_back(self, event):
+        """Navigate backward in history"""
+        if self.can_go_back():
+            self.navigation_index -= 1
+            prev_item, prev_data = self.navigation_history[self.navigation_index]
+            
+            # Set flag to prevent adding to history during navigation
+            self.is_navigating = True
+            self.display_attributes(prev_item, prev_data, False)
             self.reset_scrollregion(None)
-            # Clear the previous verse state since we're back to it now
-            self.previous_verse_data = None
-            self.previous_verse_item = None
+            self.is_navigating = False
+    
+    def go_forward(self, event):
+        """Navigate forward in history"""
+        if self.can_go_forward():
+            self.navigation_index += 1
+            next_item, next_data = self.navigation_history[self.navigation_index]
+            
+            # Set flag to prevent adding to history during navigation
+            self.is_navigating = True
+            self.display_attributes(next_item, next_data, False)
+            self.reset_scrollregion(None)
+            self.is_navigating = False
     
     def tag_verse_click(self, event, payload):
         #payload = (startverse, endverse)

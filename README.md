@@ -46,8 +46,6 @@ I programmed this around the output of SWORD-to-JSON. Here's the link to that: h
         - the save as, new, load, and merge buttons should be there
             - load and new need to close the window afterwards
     - Make sure tag manager in db manager can see and delete orphaned tags and orphaned verse_group
-- Replace tag view back button with a universal back and forward button
-    - Remembers previous tags and verses
 
 # Getting Started
 
