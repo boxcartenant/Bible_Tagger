@@ -627,6 +627,13 @@ def makeDB(sqlite_database):
             )
     ''')
 
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_verse_group_tag_tag_id ON verse_group_tag (tag_id)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_verse_group_tag_group_id ON verse_group_tag (verse_group_id)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_verse_group_verse_verse_id ON verse_group_verse (verse_id)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_verse_group_verse_book_chapter_verse ON verse_group_verse (book, chapter, verse)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_tag_tag_tag1 ON tag_tag (tag_1_id)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_tag_tag_tag2 ON tag_tag (tag_2_id)')
+
     cursor.execute(f"PRAGMA user_version = {CURRENT_DATABASE_VERSION}")
 
     conn.commit()
@@ -1069,6 +1076,14 @@ def get_db_stuff(database_file, x_type, y_type, y_value):
                 WHERE t.tag = ? AND t.note IS NOT NULL
             '''
             cursor.execute(query_string, (y_value,))
+    elif y_type == "note" and x_type == "verse":
+        # get all verse_group_id's that have a note matching y_value
+        query_string = '''
+            SELECT DISTINCT vg.verse_group_id
+            FROM verse_group vg
+            WHERE vg.note = ?
+        '''
+        cursor.execute(query_string, (y_value,))
     else:
         # Other cases not yet implemented
         print(f"get_db_stuff: combination x_type={x_type}, y_type={y_type} not yet implemented")
@@ -1086,26 +1101,50 @@ def get_db_stuff(database_file, x_type, y_type, y_value):
     return result
 
 def get_tag_list(database_file):
-    # returns a dictionary of all the tags in the database
+    # returns all the tags in the database
     if database_file is None:
         return []
     conn = sqlite3.connect(database_file)
     cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM tag")
-
-    column_names = [description[0] for description in cursor.description]
-
-    rows = cursor.fetchall()
-
-    result = []
-    for row in rows:
-        row_dict = dict(zip(column_names, row))
-        result.append(row_dict)
+    cursor.execute("SELECT tag_id, tag FROM tag")
+    result = cursor.fetchall()
 
     # Close the connection
     conn.close()
+    return result
+
+def get_synonym_pairs(database_file):
+    #return a list of book/chapter, formatted like the Treeview tags, for every chapter that has notes and tags.
+    if database_file is None:
+        return []
     
+    conn = sqlite3.connect(database_file)
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT tag_1_id, tag_2_id FROM tag_tag")
+    result = cursor.fetchall()
+
+    conn.close()
+    return result
+
+def get_all_tag_verse(database_file):
+    #return a list of book/chapter, formatted like the Treeview tags, for every chapter that has notes and tags.
+    if database_file is None:
+        return []
+    
+    conn = sqlite3.connect(database_file)
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT t.tag, vgv.verse_id 
+        FROM verse_group_tag vgt 
+        JOIN verse_group_verse vgv ON vgt.verse_group_id = vgv.verse_group_id
+        JOIN tag t ON vgt.tag_id = t.tag_id
+    """)
+    result = cursor.fetchall()
+
+    conn.close()
     return result
 
 def tag_exists(database_file, tag):
