@@ -409,6 +409,13 @@ def make_verse_id(book, chapter, verse):
     """Generate a verse_id in format 'book.chapter.verse' (e.g., '0.1.1' for Gen 1:1)"""
     return f"{book}.{chapter}.{verse}"
 
+def extract_book_chapter_verse(verse_id):
+    """Extract book, chapter, and verse from a verse_id string."""
+    parts = verse_id.split('.')
+    if len(parts) != 3:
+        raise ValueError("Invalid verse_id format. Expected 'book.chapter.verse'")
+    return int(parts[0]), int(parts[1]), int(parts[2])
+
 # Helper function to expand verse ranges using the loaded Bible data
 def expand_verse_range(start_book, start_chapter, start_verse, end_book, end_chapter, end_verse, bible_data):
     """
@@ -1146,6 +1153,74 @@ def get_all_tag_verse(database_file):
 
     conn.close()
     return result
+
+def get_overlapping_notes(database_file, verse_ref, bible_data):
+    """
+    Get all verse groups that have notes and overlap with the given verse reference.
+    Returns a list of dictionaries with verse_group_id, verse_ref, and note.
+    """
+    if database_file is None:
+        return []
+    
+    # Parse the verse reference to get the range
+    parsed = parseVerseReference(verse_ref)
+    verse_range = expand_verse_range(parsed["sb"], int(parsed["sc"]), int(parsed["sv"]), parsed["eb"], int(parsed["ec"]), int(parsed["ev"]), bible_data)
+    conn = sqlite3.connect(database_file)
+    cursor = conn.cursor()
+    
+    # Find all verse_groups that:
+    # 1. Have a note (note IS NOT NULL)
+    # 2. Contain at least one verse that overlaps with our range
+    verse_group_ids = set()
+    for verse in iterate_verse_range(verse_range):
+        verse_id = make_verse_id(verse[0], verse[1], verse[2])
+        cursor.execute("""
+            SELECT DISTINCT vg.verse_group_id
+            FROM verse_group vg
+            JOIN verse_group_verse vgv ON vg.verse_group_id = vgv.verse_group_id
+            WHERE vg.note IS NOT NULL
+            AND vgv.verse_id = ?
+        """, (verse_id,))
+
+        for row in cursor.fetchall():
+            verse_group_ids.add(row[0])
+
+    # Now get full details for each verse_group_id
+    results = []
+    for vg_id in verse_group_ids:
+        # Get all verses in this verse_group to build the reference
+        cursor.execute("""
+            SELECT verse_id
+            FROM verse_group_verse
+            WHERE verse_group_id = ?
+            ORDER BY verse_id ASC
+        """, (vg_id,))
+        
+        verses = cursor.fetchall()
+        first_verse = verses[0]
+        last_verse = verses[-1]
+
+        first_book, first_chapter, first_verse_num = extract_book_chapter_verse(first_verse[0])
+        last_book, last_chapter, last_verse_num = extract_book_chapter_verse(last_verse[0])
+        verse_dict = {
+            'verse_group_id': vg_id,
+            'start_book': first_book,
+            'start_chapter': first_chapter,
+            'start_verse': first_verse_num,
+            'end_book': last_book,
+            'end_chapter': last_chapter,
+            'end_verse': last_verse_num
+        }
+        verse_ref = normalize_vref(verse_dict)
+        results.append(verse_ref)
+
+    conn.close()
+    return results
+
+def iterate_verse_range(verse_range):
+    # Generator to iterate over a list of verses in the format (book, chapter, verse)
+    for book, chapter, verse in verse_range:
+        yield (book, chapter, verse)
 
 def tag_exists(database_file, tag):
     # Return True if tag exists, otherwise False

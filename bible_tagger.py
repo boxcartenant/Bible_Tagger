@@ -1396,6 +1396,45 @@ class TaggerPanel:
                 self.canvas.tag_bind('create_tag_button', '<Button-1>', lambda event, verse=self.current_data['ref'], reftype = type_to_get: self.create_tag(event, verse, reftype))
 
             y_offset += 10 + textlineheight + 2*textelbowroom
+
+            # NOTES LIST ##---- Show notes from overlapping verse groups
+            #only show notes when looking at verses (not tags)
+            if self.current_item == "verseClick":
+                global bible_data
+                overlapping_notes = bibledb_lib.get_overlapping_notes(open_db_file, self.current_data['ref'], bible_data)
+                
+                # Filter out the current reference from the list
+                current_ref = self.current_data['ref']
+                overlapping_notes = [note_ref for note_ref in overlapping_notes if note_ref != current_ref]
+                
+                if overlapping_notes:
+                    # Title for notes section
+                    self.canvas.create_text(x_offset, y_offset, text="Notes:", anchor=tk.W, font=self.canvasFont)
+                    y_offset += textlineheight + textlinegap*2
+                    
+                    # Display each note as a button
+                    notex = 0
+                    for idx, note_ref in enumerate(overlapping_notes):
+                        # note_ref is already a formatted string like "Exodus 1:1"
+                        button_width = self.canvasFont.measure(note_ref) + 2*textelbowroom
+                        
+                        if button_width + notex + x_offset + right_x_offset > panelWidth:
+                            notex = 0
+                            y_offset += textlineheight + textlinegap*3
+                        
+                        note_tag = f"note_click_{idx}"
+                        self.canvas.create_rectangle(x_offset+notex, y_offset, x_offset+notex+button_width, 
+                                                     y_offset+textlineheight+textlinegap*2, fill='lightyellow', tags=note_tag)
+                        self.canvas.create_text(x_offset+notex+textelbowroom, y_offset+textlinegap, 
+                                               text=note_ref, anchor=tk.NW, font=self.canvasFont, tags=note_tag)
+                        
+                        # Bind click event to navigate to that verse
+                        self.canvas.tag_bind(note_tag, '<Button-1>', 
+                                           lambda event, ref=note_ref: 
+                                           self.display_attributes("verseClick", {"ref": ref}))
+                        notex += button_width
+                    
+                    y_offset += textlineheight + textlinegap*3 + 10
     
             # VERSE LIST ##---- DONE
             #the verse list only appears when looking at tags.
