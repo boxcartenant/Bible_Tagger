@@ -439,7 +439,7 @@ class DBExplorer:
             self.canvas.create_text(10, 30, text="Select a verse to load a DB.", fill="green", font = self.canvasFont)
         else:
             #get all the tags
-            checklist = [b['tag'] for b in bdblib.get_tag_list(self.dbdata)] #all the tags
+            checklist = [b[1] for b in bdblib.get_tag_list(self.dbdata)] #all the tags (b[1] is the tag name)
             
             syngroups = []   #each indice is a list of synonymous tags
             synonymlist = [] #a group of synonymous tags to be added to syngroups
