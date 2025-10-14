@@ -1125,6 +1125,7 @@ class TaggerPanel:
         self.canvas.configure(scrollregion=self.canvas.bbox("ALL"))
         
     def display_attributes(self, item = None, data = None, shift_key = False):
+        global bible_data
         #When showing VERSES:
         # item = "verseClick" if a verse was clicked.
         # data = {"verse": the verse text, "ref": the verse reference},
@@ -1170,6 +1171,7 @@ class TaggerPanel:
         if update_history:
             self.bta.history.add_or_replace_state(self.current_item, self.current_data)
 
+    
         #Clear the canvas
         self.canvas.delete("all")
 
@@ -1273,15 +1275,9 @@ class TaggerPanel:
             y_offset += textlinegap
             noteTextHeight = 0
             #Check the DB to find out if there are notes for the selected verse
-            # (here we are assuming that we're showing a verse. Later we need to add support for showing tag data)
-            # For now, we're only showing index 0, the first row of the results, because idk if I'm going to permit more rows than that to exist.
+            # Get notes for verse groups that EXACTLY match the current reference
             if type_to_get:
-                note_query_result = bibledb_lib.get_db_stuff(open_db_file, "note", type_to_get, self.current_data["ref"])
-            else:
-                note_query_result = None
-                
-            if note_query_result and len(note_query_result) > 0:
-                self.note_area_text = note_query_result[0]['note']
+                self.note_area_text = bibledb_lib.get_note(open_db_file, self.current_data["ref"], bible_data)
             else:
                 self.note_area_text = None
 
@@ -1340,7 +1336,6 @@ class TaggerPanel:
                         synonymlist.append(synonym)
                         synonyms += bibledb_lib.get_db_stuff(open_db_file,"tag","tag",synonym['tag'])
 
-            
             #show the tags list
             for tag in self.tags_list:
                 tagname = tag['tag']
@@ -1400,7 +1395,6 @@ class TaggerPanel:
             # NOTES LIST ##---- Show notes from overlapping verse groups
             #only show notes when looking at verses (not tags)
             if self.current_item == "verseClick":
-                global bible_data
                 overlapping_notes = bibledb_lib.get_overlapping_notes(open_db_file, self.current_data['ref'], bible_data)
                 
                 # Filter out the current reference from the list

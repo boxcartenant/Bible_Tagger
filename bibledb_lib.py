@@ -1154,6 +1154,61 @@ def get_all_tag_verse(database_file):
     conn.close()
     return result
 
+def get_note(database_file, verse_ref, bible_data):
+    """
+    Get the note for a verse group that matches the given verse reference.
+    Returns the note text or None if no exact match found.
+    """
+    if database_file is None:
+        return None
+    
+    # Parse the verse reference
+    parsed = parseVerseReference(verse_ref)
+    if not parsed:
+        return None
+    
+    conn = sqlite3.connect(database_file)
+    cursor = conn.cursor()
+    
+    # Expand the verse range to get all verses in the reference
+    verse_range = expand_verse_range(
+        parsed["sb"], int(parsed["sc"]), int(parsed["sv"]),
+        parsed["eb"], int(parsed["ec"]), int(parsed["ev"]),
+        bible_data
+    )
+    
+    # Create a set of verse_ids for the reference
+    ref_verse_ids = set(make_verse_id(v[0], v[1], v[2]) for v in verse_range)
+    
+    # Get all verse groups that have notes and contain at least one of our verses
+    cursor.execute("""
+        SELECT DISTINCT vg.verse_group_id, vg.note
+        FROM verse_group vg
+        JOIN verse_group_verse vgv ON vg.verse_group_id = vgv.verse_group_id
+        WHERE vg.note IS NOT NULL
+        AND vgv.verse_id IN ({})
+    """.format(','.join('?' * len(ref_verse_ids))), tuple(ref_verse_ids))
+    
+    candidates = cursor.fetchall()
+    
+    # For each candidate, check if it's an exact match
+    for vg_id, note in candidates:
+        # Get all verses in this verse_group
+        cursor.execute("""
+            SELECT verse_id FROM verse_group_verse
+            WHERE verse_group_id = ?
+        """, (vg_id,))
+        
+        vg_verse_ids = set(row[0] for row in cursor.fetchall())
+        
+        # Check if the sets are exactly equal
+        if vg_verse_ids == ref_verse_ids:
+            conn.close()
+            return note
+    
+    conn.close()
+    return None
+
 def get_overlapping_notes(database_file, verse_ref, bible_data):
     """
     Get all verse groups that have notes and overlap with the given verse reference.
