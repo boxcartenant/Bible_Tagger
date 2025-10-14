@@ -1469,3 +1469,72 @@ def get_tags_like(database_file, partial_tag):
 
     #return a list of tag names
     return rows
+
+def cleanup_database(database_file):
+    """
+    Cleanup the database by:
+    1. Setting empty/whitespace string notes to NULL for both tags and verse_groups
+    2. Deleting orphaned verse_groups (no tags and no note)
+    """
+    if database_file is None:
+        return
+    
+    conn = sqlite3.connect(database_file)
+    cursor = conn.cursor()
+    
+    try:
+        # STEP 1: Set empty/whitespace string notes to NULL for tags
+        cursor.execute("""
+            UPDATE tag 
+            SET note = NULL 
+            WHERE note IS NOT NULL AND trim(note) = ''
+        """)
+        empty_tag_notes = cursor.rowcount
+        
+        # Set empty/whitespace string notes to NULL for verse_groups
+        cursor.execute("""
+            UPDATE verse_group 
+            SET note = NULL 
+            WHERE note IS NOT NULL AND trim(note) = ''
+        """)
+        empty_vg_notes = cursor.rowcount
+        
+        conn.commit()
+        
+        # STEP 2: Find orphaned verse_groups (no tags and no note)
+        # We don't check for verses because a verse_group with verses but no tags or note is worthless
+        #    and can be remade when a tag or note is added.
+        cursor.execute("""
+            SELECT vg.verse_group_id
+            FROM verse_group vg
+            LEFT JOIN verse_group_tag vgt ON vg.verse_group_id = vgt.verse_group_id
+            WHERE vgt.verse_group_id IS NULL
+              AND vg.note IS NULL
+        """)
+        orphaned_ids = [row[0] for row in cursor.fetchall()]
+        
+        # Delete orphaned verse_groups
+        if orphaned_ids:
+            placeholders = ','.join('?' * len(orphaned_ids))
+            cursor.execute(f"""
+                DELETE FROM verse_group 
+                WHERE verse_group_id IN ({placeholders})
+            """, orphaned_ids)
+        
+        conn.commit()
+        
+        # Log cleanup results
+        if empty_tag_notes > 0 or empty_vg_notes > 0 or len(orphaned_ids) > 0:
+            print(f"Database cleanup completed:")
+            if empty_tag_notes > 0:
+                print(f"  - Cleaned {empty_tag_notes} empty tag note(s)")
+            if empty_vg_notes > 0:
+                print(f"  - Cleaned {empty_vg_notes} empty verse_group note(s)")
+            if len(orphaned_ids) > 0:
+                print(f"  - Deleted {len(orphaned_ids)} orphaned verse_group(s)")
+        
+    except Exception as e:
+        print(f"Error during database cleanup: {e}")
+        conn.rollback()
+    finally:
+        conn.close()
