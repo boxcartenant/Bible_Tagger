@@ -58,6 +58,8 @@ class BibleTaggerApp:
         self.scripture_panel = ScripturePanel(self)
         self.tagger_panel = TaggerPanel(self)
 
+        self.history = History()
+
         self.paned_window.bind("<B1-Motion>", self.on_sash_drag)
         self.paned_window.bind("<ButtonRelease-1>", self.on_sash_release)
         self.paned_window.bind("<Configure>", lambda event : self.tagger_panel.display_attributes(None))
@@ -467,6 +469,52 @@ class BibleTaggerApp:
             #Scrollreset is True so that, if we're clicking back and forth between verses in the same chapter, it will just go ahead and highlight them.
             self.options_callback(clickdata, True)
         self.master.focus_force()
+
+class History:
+    def __init__(self):
+        # Navigation history system
+        self.navigation_history = []  # List of (item, data) tuples
+        self.navigation_index = -1    # Current position in history (-1 = no history)
+
+    def add_or_replace_state(self, item, data):
+        # Truncate forward history if we're not at the end
+        if self.navigation_index < len(self.navigation_history) - 1:
+            self.navigation_history = self.navigation_history[:self.navigation_index + 1]
+
+        # Check for duplicate before adding
+        if self.navigation_index >= 0:
+            hist_item, hist_data = self.navigation_history[self.navigation_index]
+            if hist_item != item or hist_data != data:
+                # Add new entry (normal behavior)
+                self.navigation_history.append((item, data))
+                self.navigation_index += 1
+        else:
+            self.navigation_history.append((item, data))
+            self.navigation_index += 1
+
+    def can_go_back(self):
+        """Check if we can navigate backward in history"""
+        return self.navigation_index > 0
+    
+    def can_go_forward(self):
+        """Check if we can navigate forward in history"""
+        return self.navigation_index < len(self.navigation_history) - 1
+
+    def go_back(self):
+        """Navigate backward in history"""
+        if self.can_go_back():
+            self.navigation_index -= 1
+            prev_item, prev_data = self.navigation_history[self.navigation_index]
+            return prev_item, prev_data
+        return None, None
+    
+    def go_forward(self):
+        """Navigate forward in history"""
+        if self.can_go_forward():
+            self.navigation_index += 1
+            next_item, next_data = self.navigation_history[self.navigation_index]
+            return next_item, next_data
+        return None, None
 
 class NavigationTree:
     #leftmost panel on the main window
@@ -1038,14 +1086,8 @@ class TaggerPanel:
         self.boldFont = Font(size = 10, weight = 'bold')
         self.current_data = None
         self.current_item = None
-        
-        # Navigation history system
-        self.navigation_history = []  # List of (item, data) tuples
-        self.navigation_index = -1    # Current position in history (-1 = no history)
-        self.is_navigating = False    # Flag to prevent adding to history during back/forward
-        
-        global open_db_file
 
+        global open_db_file
 
         self.canvas_frame = ttk.Frame(self.bta.paned_window)
         self.canvas_frame.grid(row=0, column=1, sticky="nsew")
@@ -1095,18 +1137,28 @@ class TaggerPanel:
 
         #print(self.current_item)
         #keep track of what kind of thing we're currently showing.
+        update_history = True
+        if item == "history":
+            if data["direction"] == "backward":
+                item, data = self.bta.history.go_back()
+            elif data["direction"] == "forward":
+                item, data = self.bta.history.go_forward()
+            update_history = False
         if item == None:
             item = self.current_item
+            #update_history = False
         else:
-            self.current_item = item
-            
+            self.current_item = item 
+
         #get the verse reference and store in self.current_data['ref']
         if data != None and self.current_item == "verseClick":
             #self.current_data is None the first time a verse is clicked. '-' will be in it if multiple verses are currently selected.
             if (self.current_data is not None) and (shift_key and "-" not in self.current_data['ref']):
-                self.current_data['ref'] = combineVRefs(self.current_data['ref'], data['ref'])
+                # Shift-clicking from single verse: create new state with extended range
+                self.current_data = {"verse": data.get('verse', ''), "ref": combineVRefs(self.current_data['ref'], data['ref'])}
             elif (self.current_data is not None) and (shift_key and "-" in self.current_data['ref']):
-                self.current_data['ref'] = combineVRefs(self.current_data['ref'].split('-')[0], data['ref'])
+                # Shift-clicking from range: create new state extending from start of original range
+                self.current_data = {"verse": data.get('verse', ''), "ref": combineVRefs(self.current_data['ref'].split('-')[0], data['ref'])}
             else:
                 self.current_data = data
         elif data != None:
@@ -1114,25 +1166,9 @@ class TaggerPanel:
         else:
             data = self.current_data
         
-        # Add new state to navigation history (unless we're navigating with back/forward)
-        # This happens AFTER we've updated current_item and current_data
-        if not self.is_navigating and self.current_item is not None and self.current_data is not None:
-            # Check if this state is different from the current history position
-            should_add = True
-            if self.navigation_index >= 0 and self.navigation_index < len(self.navigation_history):
-                # Check if we're already at this exact state
-                hist_item, hist_data = self.navigation_history[self.navigation_index]
-                if hist_item == self.current_item and hist_data == self.current_data:
-                    should_add = False
-            
-            if should_add:
-                # If we're in the middle of history (navigated back), truncate forward history
-                if self.navigation_index < len(self.navigation_history) - 1:
-                    self.navigation_history = self.navigation_history[:self.navigation_index + 1]
-                
-                # Add new state to history
-                self.navigation_history.append((self.current_item, self.current_data.copy() if isinstance(self.current_data, dict) else self.current_data))
-                self.navigation_index = len(self.navigation_history) - 1
+        # Add new state to navigation history using the History class
+        if update_history:
+            self.bta.history.add_or_replace_state(self.current_item, self.current_data)
 
         #Clear the canvas
         self.canvas.delete("all")
@@ -1176,7 +1212,7 @@ class TaggerPanel:
         forward_button_x = panelWidth - 5 - forward_button_width
         
         # Determine if button should be enabled or disabled
-        forward_enabled = self.can_go_forward()
+        forward_enabled = self.bta.history.can_go_forward()
         forward_color = 'lightgreen' if forward_enabled else 'lightgray'
         forward_text_color = 'black' if forward_enabled else 'gray'
         
@@ -1199,7 +1235,7 @@ class TaggerPanel:
         back_button_x = forward_button_x - button_spacing - back_button_width
         
         # Determine if button should be enabled or disabled
-        back_enabled = self.can_go_back()
+        back_enabled = self.bta.history.can_go_back()
         back_color = 'lightblue' if back_enabled else 'lightgray'
         back_text_color = 'black' if back_enabled else 'gray'
         
@@ -1409,37 +1445,18 @@ class TaggerPanel:
         
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
 
-    def can_go_back(self):
-        """Check if we can navigate backward in history"""
-        return self.navigation_index > 0
     
-    def can_go_forward(self):
-        """Check if we can navigate forward in history"""
-        return self.navigation_index < len(self.navigation_history) - 1
-    
-    def go_back(self, event):
+    def go_back(self, _):
         """Navigate backward in history"""
-        if self.can_go_back():
-            self.navigation_index -= 1
-            prev_item, prev_data = self.navigation_history[self.navigation_index]
-            
-            # Set flag to prevent adding to history during navigation
-            self.is_navigating = True
-            self.display_attributes(prev_item, prev_data, False)
+        if self.bta.history.can_go_back():
+            self.display_attributes("history", {"direction": "backward"}, False)
             self.reset_scrollregion(None)
-            self.is_navigating = False
     
-    def go_forward(self, event):
+    def go_forward(self, _):
         """Navigate forward in history"""
-        if self.can_go_forward():
-            self.navigation_index += 1
-            next_item, next_data = self.navigation_history[self.navigation_index]
-            
-            # Set flag to prevent adding to history during navigation
-            self.is_navigating = True
-            self.display_attributes(next_item, next_data, False)
+        if self.bta.history.can_go_forward():
+            self.display_attributes("history", {"direction": "forward"}, False)
             self.reset_scrollregion(None)
-            self.is_navigating = False
     
     def tag_verse_click(self, event, payload):
         #payload = (startverse, endverse)
@@ -1454,8 +1471,8 @@ class TaggerPanel:
                 #in this case, "verse" is just another tag.
                 bibledb_lib.delete_tag_tag(open_db_file, verse, tag)
             self.display_attributes()
-            self.cause_canvas_to_refresh()
-            self.update_tree_colors()
+            self.bta.cause_canvas_to_refresh()
+            self.bta.update_tree_colors()
         else:
             print("Tag deletion canceled")
 
