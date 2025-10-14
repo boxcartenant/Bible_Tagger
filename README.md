@@ -40,6 +40,17 @@ I programmed this around the output of SWORD-to-JSON. Here's the link to that: h
 - CLI Scrape command
 - On program load, check if db version mismatch, prepare migration plan, and ask user for confirmation in GUI dialog box. If no, exit. If yet, do migration and then continue program load
 - Use ffariajr's bible_scraper format
+- Better DB Manager
+    - remove db buttons from nav tree
+    - Revamp DB explorer so that it is db manager
+    - Add a third panel to db manager window
+        - the save as, new, load, and merge buttons should be there
+            - load and new need to close the window afterwards
+    - Make sure tag manager in db manager can see and delete orphaned tags and orphaned verse_group
+- Replace tag view back button with a universal back and forward button
+    - Remembers previous tags and verses
+- Remove the "tag a group name or bar to view its verses" diolog and add to window
+- show currently loaded db in db explorer
 
 # Getting Started
 
