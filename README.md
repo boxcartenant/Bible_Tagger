@@ -48,7 +48,6 @@ I programmed this around the output of SWORD-to-JSON. Here's the link to that: h
     - Make sure tag manager in db manager can see and delete orphaned tags and orphaned verse_group
 - Replace tag view back button with a universal back and forward button
     - Remembers previous tags and verses
-- Remove the "tag a group name or bar to view its verses" diolog and add to window
 
 # Getting Started
 

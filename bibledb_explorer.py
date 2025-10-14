@@ -1112,7 +1112,13 @@ class VerseSortingPanel(ttk.Frame):
         y_offset = 10
 
         canvas.create_text(x_offset, y_offset, text="Tag-Synonym Groups in Selected Verses", anchor=tk.NW, font=canvas_font)
-        y_offset += textlineheight + 12
+        y_offset += textlineheight + 8
+        
+        # Add instruction text
+        instruction_font = Font(size=9)
+        canvas.create_text(x_offset, y_offset, text="Click a group name or bar to view its verses. (All verses also copied to clipboard.)", 
+                          anchor=tk.NW, font=instruction_font, fill='navy')
+        y_offset += instruction_font.metrics()["linespace"] + 12
 
         max_val = len(group_to_verses[0][1])
         bar_area_width = 600
@@ -1166,7 +1172,6 @@ class VerseSortingPanel(ttk.Frame):
         total_width = x_offset + label_col_width + bar_area_width + 200
         canvas.configure(scrollregion=(0, 0, total_width, total_height))
 
-        messagebox.showinfo("Done", "Click a group name or bar to view its verses.\n(All verses also copied to clipboard.)")
         self.parent_window.lift()
         vis_window.lift()
 
