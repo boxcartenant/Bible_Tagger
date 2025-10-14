@@ -1,10 +1,10 @@
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog, simpledialog, Misc, StringVar, OptionMenu
+from tkinter import ttk, messagebox, filedialog, simpledialog, StringVar
 import bibledb_lib as bdblib
 from tkinter.font import Font
 from openpyxl import Workbook
 import os
-from collections import defaultdict
+from collections import defaultdict, deque
 import numpy as np
 import numpy as np
 import matplotlib.pyplot as plt
@@ -412,7 +412,7 @@ class DBExplorer:
         self.show_loading_overlay("Loading…")
         #shows all the tags
         x_offset = 5
-        y_offset = 3
+        y_offset = 10
         textelbowroom = 10
         textlinegap = 2
         textlineheight = Font.metrics(self.canvasFont)["linespace"]
@@ -428,88 +428,79 @@ class DBExplorer:
             self.dbdata = dbstuff
         else:
             dbstuff = self.dbdata
-
-        # Display currently loaded database at the top
-        if self.dbdata:
-            db_name = os.path.basename(self.dbdata) if self.dbdata else "None"
-            self.canvas.create_text(x_offset, y_offset, text=f"Database: {db_name}", anchor=tk.W, fill="navy", font=self.boldFont)
-            y_offset += boldlineheight + textlinegap * 3
+            
 
         if self.dbdata is None:
             self.canvas.create_text(10, 30, text="Select a verse to load a DB.", fill="green", font = self.canvasFont)
         else:
-            #get all the tags
-            checklist = [b[1] for b in bdblib.get_tag_list(self.dbdata)] #all the tags (b[1] is the tag name)
+            # Display currently loaded database at the top
+            db_name = os.path.basename(self.dbdata) if self.dbdata else "None"
+            self.canvas.create_text(x_offset, y_offset, text=f"Database: {db_name}", anchor=tk.W, fill="navy", font=self.boldFont)
+            y_offset += boldlineheight + textlinegap * 3
             
-            syngroups = []   #each indice is a list of synonymous tags
-            synonymlist = [] #a group of synonymous tags to be added to syngroups
-            checkedlist = [] #tags we've already dealt with. So we don't deal with them again.
-            synonyms = []    #a working list of tags we're in the middle of finding synonyms for
+            tag_rows = bdblib.get_tag_list(self.dbdata)
+            tag_to_id = {row[1]: row[0] for row in tag_rows}
+            id_to_tag = {row[0]: row[1] for row in tag_rows}
+            checklist = [row[1] for row in tag_rows]
             
+            # Fetch all synonym pairs and build adjacency list (undirected graph)
+            syn_pairs = bdblib.get_synonym_pairs(self.dbdata)
+            adj = defaultdict(list)
+            for t1_id, t2_id in syn_pairs:
+                t1 = id_to_tag[t1_id]
+                t2 = id_to_tag[t2_id]
+                if t2 not in adj[t1]:
+                    adj[t1].append(t2)
+                if t1 not in adj[t2]:
+                    adj[t2].append(t1)
+            
+            # Find connected components (synonym groups) using BFS
+            syngroups = []
+            checked = set()
             for tag in checklist:
-                if tag not in checkedlist:
-                    checkedlist.append(tag)
-                    synonymlist.append(tag)
-                    synonyms = [b['tag'] for b in bdblib.get_db_stuff(self.dbdata,"tag","tag",tag)]
-                    while len(synonyms) > 0:
-                        synonym = synonyms.pop()
-                        if synonym not in checkedlist:
-                            checkedlist.append(synonym)
-                            synonymlist.append(synonym)
-                            synonyms += [b['tag'] for b in bdblib.get_db_stuff(self.dbdata,"tag","tag",synonym)]
-                    
-                  #  #OLD Recursive way of getting syngroups
-                  #  def recursivesynonyms(syno, thisgroup):
-                  #      synonyms = [b['tag'] for b in bdblib.get_db_stuff(self.dbdata,"tag","tag",syno)]
-                  #      for tag in synonyms:
-                  #          if tag not in thisgroup:
-                  #              thisgroup.append(tag)
-                  #              thisgroup = recursivesynonyms(tag, thisgroup)
-                  #      return thisgroup
-                  #  
-                  #  synonymlist = recursivesynonyms(tag, [tag])
-                  #  
-                  #  for s in synonymlist:
-                  #      if s != tag:
-                  #          checkedlist.append(s)
-                  #      
-                    syngroups.append({"tags":synonymlist})
+                if tag not in checked:
                     synonymlist = []
-                
-
+                    queue = deque([tag])
+                    checked.add(tag)
+                    while queue:
+                        current = queue.popleft()
+                        synonymlist.append(current)
+                        for neighbor in adj[current]:
+                            if neighbor not in checked:
+                                checked.add(neighbor)
+                                queue.append(neighbor)
+                    # Sort tags in group for consistent display
+                    syngroups.append({"tags": sorted(synonymlist)})
+            
+            # Fetch all tag-verse associations in one query
+            assoc_rows = bdblib.get_all_tag_verse(self.dbdata)
+            
+            # Build verses_by_tag: tag -> set of verse_ids
+            verses_by_tag = defaultdict(set)
+            for tag, verse_id in assoc_rows:
+                verses_by_tag[tag].add(verse_id)
+            
+            # Compute unique verse counts for each synonym group (union of sets)
             syngroups_lo = 9223372036854775807
             syngroups_hi = 0
-            #count the unique verses for the synonym group
-            #these low and high values are used to scale bargraph lengths and colors
-            verses = []
             for i in range(len(syngroups)):
+                unique_verses = set()
                 for tag in syngroups[i]["tags"]:
-                    checkverses = bdblib.get_db_stuff(self.dbdata, "verse", "tag", tag)
-                    for verse in checkverses:
-                        if verse not in verses:
-                            verses.append(verse)
-                syngroups[i]["verses"] = len(verses)
-                if syngroups[i]["verses"] < syngroups_lo:
-                    syngroups_lo = syngroups[i]["verses"]
-                if syngroups[i]["verses"] > syngroups_hi:
-                    syngroups_hi = syngroups[i]["verses"]
-                verses = []
-                                
-
-            tags_lo = 9223372036854775807
-            tags_hi = 0
-            tags = [{"tag":b} for b in checklist]
-            #count the verses for each tag
-            for i in range(len(tags)):
-                tags[i]["verses"] = len(bdblib.get_db_stuff(self.dbdata, "verse", "tag", tags[i]["tag"]))
-                if tags[i]["verses"] < tags_lo:
-                    tags_lo = tags[i]["verses"]
-                if tags[i]["verses"] > tags_hi:
-                    tags_hi = tags[i]["verses"]
+                    unique_verses |= verses_by_tag[tag]
+                count = len(unique_verses)
+                syngroups[i]["verses"] = count
+                if count < syngroups_lo:
+                    syngroups_lo = count
+                if count > syngroups_hi:
+                    syngroups_hi = count
+            
+            # Optionally compute per-tag verse counts (if needed for future use; currently unused in display)
+            # tags_lo = min(len(verses_by_tag[tag]) for tag in checklist) if checklist else 0
+            # tags_hi = max(len(verses_by_tag[tag]) for tag in checklist) if checklist else 0
             
             #show some statistics at the top
             #  qty of tags
-            showtext = "total tag count: " +str(len(tags))
+            showtext = "total tag count: " +str(len(checklist))
             self.canvas.create_text(x_offset+textelbowroom, y_offset+textelbowroom, text=showtext, anchor=tk.NW, font=self.canvasFont)
             y_offset += textlineheight + textlinegap
             #  qty of synonym groups
@@ -551,23 +542,6 @@ class DBExplorer:
 
             y_offset += 10 + textlineheight + 2*textelbowroom
             
-            #now we have...
-            # tags -- ["tagname","tagname1","tagname2",...]
-            # tagverses -- [versecount, versecount1, versecount2,...]
-            # syngroups -- [{"tags":["tagname","tagname1","tagname2",...],"verses":integer_verse_count},...]
-            
-            # tags_hi -- the qty of references to the most used tag
-            # tags_lo -- the qty of references to the least used tag
-            # syngroups_hi -- the qty of references to the most used syngroup
-            # syngroups_lo -- the qty of references to the least used syngroup
-            #... the ranges for tags might be inaccurate in view of syngroups where another synonym has the references
-
-            #self.sortmode_text = "sorting"#the button text
-            #self.sortmode = "alphabet" #toggles between "alphabet" and "usage"
-            #self.colormode_text = "color" #the button text
-            #self.colormode = "plain" #toggles: "plain", "redblue", "purpleyellow"
-
-            #prepare the workbook
             workbook = None
             sheet = None
             if self.export_tags_this_time:
@@ -575,24 +549,29 @@ class DBExplorer:
                 sheet = workbook.active
                 wbheader = ["Verse Count", "Tags..."]
                 sheet.append(wbheader)
-                
+
+            # Prepare sorted_syngroups based on sort mode
             if self.sortmode == "alphabet":
-                sorted_tags = sorted(tags, key=lambda x: x["tag"])
-                sorted_syngroups = [(syngroups.index(lst), lst["tags"].index(dct["tag"])) for dct in sorted_tags for lst in syngroups if dct["tag"] in lst["tags"]]
+                tags_list = [{"tag": t} for t in checklist]
+                sorted_tags = sorted(tags_list, key=lambda x: x["tag"])
+                sorted_syngroups = []
+                for dct in sorted_tags:
+                    for idx, lst in enumerate(syngroups):
+                        if dct["tag"] in lst["tags"]:
+                            tag_idx = lst["tags"].index(dct["tag"])
+                            sorted_syngroups.append((idx, tag_idx))
+                            break
             elif self.sortmode == "usage":
-                #We are only using syngroups for display, so no need to sort tags here.
-                #sorted_tags = sorted(tags, key=lambda x: x["verses"], reverse = True) #reverse to put the most-used tags on top
-                sorted_syngroups = sorted(syngroups, key=lambda x: x["verses"], reverse = True)
+                sorted_syngroups = sorted(syngroups, key=lambda x: x["verses"], reverse=True)
+            
             tagnum = 0
             self.all_tags_list = [s["tags"] for s in sorted(syngroups, key=lambda x: x["verses"], reverse = True)]# this variable is used by right_hand_frame to export tag/note/verses 
             for s in sorted_syngroups:
-                #print(s)
                 if self.sortmode == "alphabet":
-                    #in this case, s is a list of tuples, representing the index of the tag in syngroups.
-                    tags = [syngroups[s[0]]["tags"][s[1]]]
-                    verses = syngroups[s[0]]["verses"]
+                    group_idx, tag_idx = s
+                    tags = [syngroups[group_idx]["tags"][tag_idx]]
+                    verses = syngroups[group_idx]["verses"]
                 elif self.sortmode == "usage":
-                    #in this case, s is a dict, like {'tags': ['beard', 'hair', 'beards'], 'verses': 4}
                     tags = s["tags"]
                     verses = s["verses"]
                 if self.export_tags_this_time:
@@ -649,7 +628,6 @@ class DBExplorer:
             self.export_tags_path = None
         self.hide_loading_overlay()
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
-        
 
 ###########################################Right Hand Frame is the verse sorting area. Probably not a useful name for it, now that I think about it.
 
