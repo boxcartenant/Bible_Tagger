@@ -38,7 +38,6 @@ I programmed this around the output of SWORD-to-JSON. Here's the link to that: h
     - Make verse references in the DB more explicit so that the tool will accommodate switching between translations with missing verses
 - Notes viewer
 - CLI Scrape command
-- On program load, check if db version mismatch, prepare migration plan, and ask user for confirmation in GUI dialog box. If no, exit. If yet, do migration and then continue program load
 - Use ffariajr's bible_scraper format
 - Better DB Manager
     - remove db buttons from nav tree

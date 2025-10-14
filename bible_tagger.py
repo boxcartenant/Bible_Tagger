@@ -104,7 +104,78 @@ class BibleTaggerApp:
                     f.write("")
                 bibledb_lib.makeDB(bdbpath)
                 print(f"Created new database at {bdbpath}")
-            self.load_bdb(bdbpath, True)
+            
+            # Auto-migrate database if needed
+            if bdbpath and os.path.exists(bdbpath):
+                current_version = bibledb_lib.get_database_version(bdbpath)
+                target_version = bibledb_lib.CURRENT_DATABASE_VERSION
+                
+                if current_version != target_version:
+                    # Show dialog asking if user wants to migrate
+                    message = (
+                        f"Database Version Mismatch\n\n"
+                        f"Current database version: {current_version}\n"
+                        f"Required version: {target_version}\n\n"
+                        f"The database needs to be migrated to work with this version of Bible Tagger.\n"
+                        f"A backup will be created automatically.\n\n"
+                        f"Would you like to migrate the database now?"
+                    )
+                    
+                    user_choice = messagebox.askyesno(
+                        "Database Migration Required",
+                        message,
+                        icon='warning'
+                    )
+                    
+                    if user_choice:
+                        # User chose to migrate
+                        print(f"\nMigrating database from version {current_version} to {target_version}...")
+                        success, backup_path = migrate_db(bdbpath, interactive=False)
+                        
+                        if success:
+                            # Show success dialog
+                            success_msg = (
+                                f"Database successfully migrated!\n\n"
+                                f"New version: {target_version}\n"
+                            )
+                            if backup_path and os.path.exists(backup_path):
+                                success_msg += f"\nBackup saved at:\n{backup_path}"
+                            
+                            messagebox.showinfo("Migration Successful", success_msg)
+                            print(f"✓ Database successfully migrated to version {target_version}")
+                            if backup_path:
+                                print(f"✓ Backup saved at: {backup_path}")
+                        else:
+                            # Show failure dialog
+                            error_msg = (
+                                f"Database migration failed!\n\n"
+                                f"Please check the console for error details.\n"
+                            )
+                            if backup_path and os.path.exists(backup_path):
+                                error_msg += f"\nYour original database was backed up to:\n{backup_path}"
+                            
+                            messagebox.showerror("Migration Failed", error_msg)
+                            print(f"✗ Migration failed")
+                            
+                            # Let user choose a different database
+                            bdbpath = None
+                    else:
+                        # User chose not to migrate, show file dialog
+                        messagebox.showinfo(
+                            "Load Different Database",
+                            "Please select a database file to open."
+                        )
+                        bdbpath = None
+            
+            if bdbpath:
+                self.load_bdb(bdbpath, True)
+            else:
+                # If no valid database, show load dialog
+                if not self.load_db(on_startup=True):
+                    # User cancelled database selection on startup, exit
+                    print("No database selected. Exiting...")
+                    self.master.destroy()
+                    sys.exit(0)
         except Exception as e:
             print("Failed to load BDB file from config:", e)
             bdbpath = None
@@ -132,15 +203,81 @@ class BibleTaggerApp:
             with open(config_filename, 'w') as configfile:
                 cfg.write(configfile)
         
-    def load_db(self):
+    def load_db(self, on_startup=False):
         # Implement your logic to open the browse window and load the database
+        # on_startup: if True and user cancels, return False to signal app should exit
         file_path = filedialog.askopenfilename(defaultextension=".bdb", filetypes=[("Sqlite Bible Files", "*.bdb"), ("All files", "*.*")])
         if file_path:
             if file_path[-4:] == ".bdb":
-                print(f"Loaded DB: {file_path}")
-                self.load_bdb(file_path)
+                # Check database version
+                current_version = bibledb_lib.get_database_version(file_path)
+                target_version = bibledb_lib.CURRENT_DATABASE_VERSION
+                
+                if current_version != target_version:
+                    # Show dialog asking if user wants to migrate
+                    message = (
+                        f"Database Version Mismatch\n\n"
+                        f"Selected database version: {current_version}\n"
+                        f"Required version: {target_version}\n\n"
+                        f"The database needs to be migrated to work with this version of Bible Tagger.\n"
+                        f"A backup will be created automatically.\n\n"
+                        f"Would you like to migrate the database now?"
+                    )
+                    
+                    user_choice = messagebox.askyesno(
+                        "Database Migration Required",
+                        message,
+                        icon='warning'
+                    )
+                    
+                    if user_choice:
+                        # User chose to migrate
+                        print(f"\nMigrating database from version {current_version} to {target_version}...")
+                        success, backup_path = migrate_db(file_path, interactive=False)
+                        
+                        if success:
+                            # Show success dialog
+                            success_msg = (
+                                f"Database successfully migrated!\n\n"
+                                f"New version: {target_version}\n"
+                            )
+                            if backup_path and os.path.exists(backup_path):
+                                success_msg += f"\nBackup saved at:\n{backup_path}"
+                            
+                            messagebox.showinfo("Migration Successful", success_msg)
+                            print(f"✓ Database successfully migrated to version {target_version}")
+                            if backup_path:
+                                print(f"✓ Backup saved at: {backup_path}")
+                            
+                            # Load the migrated database
+                            print(f"Loaded DB: {file_path}")
+                            self.load_bdb(file_path)
+                        else:
+                            # Show failure dialog
+                            error_msg = (
+                                f"Database migration failed!\n\n"
+                                f"Please check the console for error details.\n"
+                            )
+                            if backup_path and os.path.exists(backup_path):
+                                error_msg += f"\nYour original database was backed up to:\n{backup_path}"
+                            
+                            messagebox.showerror("Migration Failed", error_msg)
+                            print(f"✗ Migration failed")
+                            # Don't load the database, stay with current
+                    else:
+                        # User chose not to migrate, stay with current database
+                        print("Migration cancelled by user. Keeping current database.")
+                else:
+                    # Version matches, load normally
+                    print(f"Loaded DB: {file_path}")
+                    self.load_bdb(file_path)
+                return True
             else:
                 print("I'm not opening that. It's gotta be a SQLITE database file with the extension \".bdb\"")
+                return False
+        else:
+            # User cancelled file selection
+            return not on_startup  # If on startup, signal that startup should abort, else keep running
 
     def new_db(self):
         global open_db_file
@@ -1305,6 +1442,112 @@ class TaggerPanel:
 
 
 
+def migrate_db(db_path, interactive=True):
+    """
+    Migrate a database to the current version.
+    
+    Args:
+        db_path: Path to the database file to migrate
+        interactive: If True, prompt user for confirmation. If False, migrate automatically.
+    
+    Returns:
+        tuple: (success: bool, backup_path: str or None)
+               success is True if migration successful or not needed, False otherwise
+               backup_path is the path to the backup file created, or None if no backup
+    """
+    if not os.path.exists(db_path):
+        print(f"✗ Error: Database file not found: {db_path}")
+        return False, None
+    
+    # Check current database version
+    current_version = bibledb_lib.get_database_version(db_path)
+    target_version = bibledb_lib.CURRENT_DATABASE_VERSION
+
+    if current_version == target_version:
+        if interactive:
+            print(f"Database is already at version {target_version}")
+        return True, None
+
+    if current_version > target_version:
+        print(f"Error: Database version ({current_version}) is newer than expected ({target_version})")
+        print("This may happen if you're using an older version of Bible Tagger")
+        return False, None
+
+    # Find migration path
+    migration_dir = "db_migration"
+    if not os.path.exists(migration_dir):
+        print(f"Error: Migration directory not found: {migration_dir}")
+        return False, None
+
+    if interactive:
+        print(f"Database: {db_path}")
+        print(f"Current version: {current_version}")
+        print(f"Target version: {target_version}")
+
+    # Build migration chain
+    migration_chain = []
+    current = current_version
+
+    while current < target_version:
+        next_version = current + 1
+        migration_file = os.path.join(migration_dir, f"{current}-to-{next_version}.py")
+        
+        if not os.path.exists(migration_file):
+            print(f"Error: Missing migration script: {migration_file}")
+            print(f"Cannot migrate from version {current} to {next_version}")
+            return False, None
+
+        migration_chain.append((current, next_version, migration_file))
+        current = next_version
+
+    # Display migration plan
+    if interactive:
+        print(f"\nMigration plan:")
+        for from_ver, to_ver, script in migration_chain:
+            print(f"  {from_ver} → {to_ver}: {script}")
+
+        print(f"\nThis will migrate the database through {len(migration_chain)} step(s)")
+        response = input("Continue? (y/N): ")
+        if response.lower() != 'y':
+            print("Migration cancelled")
+            return False, None
+
+    # Calculate backup path
+    base_path = os.path.splitext(db_path)[0]
+    backup_path = f"{base_path}_backup.bdb"
+
+    # Execute migrations
+    for index, (from_ver, to_ver, script) in enumerate(migration_chain):
+        if interactive:
+            print(f"\n{'='*60}")
+            print(f"Executing migration: {from_ver} → {to_ver}")
+            print(f"{'='*60}")
+
+        # Import and run the migration script
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(f"migration_{from_ver}_to_{to_ver}", script)
+        migration_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(migration_module)
+
+        # Call the migrate_database function from the migration script
+        # Only create backup for the first migration in the chain
+        if hasattr(migration_module, 'migrate_database'):
+            create_backup = (index == 0)  # Only backup on first migration
+            success = migration_module.migrate_database(db_path, create_backup=create_backup)
+            if not success:
+                print(f"\nMigration failed at step {from_ver} → {to_ver}")
+                return False, backup_path if index == 0 and os.path.exists(backup_path) else None
+        else:
+            print(f"Error: Migration script {script} does not have migrate_database function")
+            return False, None
+    
+    if interactive:
+        print(f"\n{'='*60}")
+        print(f"All migrations completed successfully!")
+        print(f"{'='*60}")
+        print(f"Database is now at version {target_version}")
+    
+    return True, backup_path
 
 
 if __name__ == "__main__":
@@ -1511,89 +1754,9 @@ if __name__ == "__main__":
                 print("Usage: python bible_tagger.py migrate <database_path>")
                 sys.exit(1)
         
-        if not os.path.exists(db_to_migrate):
-            print(f"✗ Error: Database file not found: {db_to_migrate}")
-            sys.exit(1)
-        
-        # Check current database version
-        current_version = bibledb_lib.get_database_version(db_to_migrate)
-        target_version = bibledb_lib.CURRENT_DATABASE_VERSION
-
-        if current_version == target_version:
-            print(f"Database is already at version {target_version}")
-            sys.exit(0)
-
-        if current_version > target_version:
-            print(f"Error: Database version ({current_version}) is newer than expected ({target_version})")
-            print("This may happen if you're using an older version of Bible Tagger")
-            sys.exit(1)
-
-        # Find migration path
-        migration_dir = "db_migration"
-        if not os.path.exists(migration_dir):
-            print(f"Error: Migration directory not found: {migration_dir}")
-            sys.exit(1)
-
-        print(f"Database: {db_to_migrate}")
-        print(f"Current version: {current_version}")
-        print(f"Target version: {target_version}")
-
-        # Build migration chain
-        migration_chain = []
-        current = current_version
-
-        while current < target_version:
-            next_version = current + 1
-            migration_file = os.path.join(migration_dir, f"{current}-to-{next_version}.py")
-            
-            if not os.path.exists(migration_file):
-                print(f"Error: Missing migration script: {migration_file}")
-                print(f"Cannot migrate from version {current} to {next_version} in order to get to version {target_version}")
-                sys.exit(1)
-
-            migration_chain.append((current, next_version, migration_file))
-            current = next_version
-
-        # Display migration plan
-        print(f"\nMigration plan:")
-        for from_ver, to_ver, script in migration_chain:
-            print(f"  {from_ver} → {to_ver}: {script}")
-
-        print(f"\nThis will migrate the database through {len(migration_chain)} step(s)")
-        response = input("Continue? (y/N): ")
-        if response.lower() != 'y':
-            print("Migration cancelled")
-            sys.exit(0)
-
-        # Execute migrations
-        for index, (from_ver, to_ver, script) in enumerate(migration_chain):
-            print(f"\n{'='*60}")
-            print(f"Executing migration: {from_ver} → {to_ver}")
-            print(f"{'='*60}")
-
-            # Import and run the migration script
-            import importlib.util
-            spec = importlib.util.spec_from_file_location(f"migration_{from_ver}_to_{to_ver}", script)
-            migration_module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(migration_module)
-
-            # Call the migrate_database function from the migration script
-            # Only create backup for the first migration in the chain
-            if hasattr(migration_module, 'migrate_database'):
-                create_backup = (index == 0)  # Only backup on first migration
-                success = migration_module.migrate_database(db_to_migrate, create_backup=create_backup)
-                if not success:
-                    print(f"\nMigration failed at step {from_ver} → {to_ver}")
-                    sys.exit(1)
-            else:
-                print(f"Error: Migration script {script} does not have migrate_database function")
-                sys.exit(1)
-        
-        print(f"\n{'='*60}")
-        print(f"All migrations completed successfully!")
-        print(f"{'='*60}")
-        print(f"Database is now at version {target_version}")
-        sys.exit(0)
+        # Use the refactored migrate_db function
+        success, _ = migrate_db(db_to_migrate, interactive=True)
+        sys.exit(0 if success else 1)
     elif args.command == "scrape":
         print(f"Scraping Bible version: {args.version}")
         print("\nScraping not yet implemented.")

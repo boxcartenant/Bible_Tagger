@@ -285,21 +285,36 @@ def migrate_database(old_db_path, create_backup=True):
         
         # Track unique pairs (normalized)
         unique_pairs = set()
+        failed_pairs = []
         for tt in tag_tags:
             tag1 = tt['tag_1_id']
             tag2 = tt['tag_2_id']
-            # Normalize: smaller id first
+            # Normalize: smaller id first (enforce CHECK constraint tag_1_id < tag_2_id)
             if tag1 > tag2:
                 tag1, tag2 = tag2, tag1
-            unique_pairs.add((tag1, tag2))
+            # Ensure they're different tags
+            if tag1 != tag2:
+                unique_pairs.add((tag1, tag2))
+            else:
+                failed_pairs.append((tt['tag_1_id'], tt['tag_2_id']))
         
+        if failed_pairs:
+            print(f"    ⚠ Warning: Skipped {len(failed_pairs)} self-referencing tag pairs")
+        
+        inserted_count = 0
         for tag1, tag2 in unique_pairs:
-            cursor.execute("""
-                INSERT INTO tag_tag_new (tag_1_id, tag_2_id)
-                VALUES (?, ?)
-            """, (tag1, tag2))
+            try:
+                # Use INSERT OR IGNORE to handle any duplicates gracefully
+                cursor.execute("""
+                    INSERT OR IGNORE INTO tag_tag_new (tag_1_id, tag_2_id)
+                    VALUES (?, ?)
+                """, (tag1, tag2))
+                if cursor.rowcount > 0:
+                    inserted_count += 1
+            except Exception as e:
+                print(f"    ⚠ Warning: Failed to insert tag_tag pair ({tag1}, {tag2}): {e}")
         
-        print(f"    ✓ Migrated {len(unique_pairs)} tag-tag relationships")
+        print(f"    ✓ Migrated {inserted_count} tag-tag relationships")
         
         # Step 3: Drop old tables and rename new ones
         print("\n3. Replacing old tables with new schema...")
