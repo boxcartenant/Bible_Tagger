@@ -10,7 +10,7 @@ Migration scripts MUST have a function migrate_database(old_db_path, create_back
 
 ### Behavior
 
-Migration scripts should always create a backup of the db file, called <oldname>_backup.dbd
-Then it should migrate the data. Do not try to keep old structures.
+Migration scripts should always create a backup of the db file, called <oldname>_backup.dbd, unless explicitly told not to.
+Then it should migrate the data. Do not try to keep old structures. The old structures are in the backup file if requested.
 Make sure to update USER_VERSION
 DO NOT create scripts that migrate dbs more than one version up. Bible Tagger Migration automatically chains migration scripts to bring any db to the current version

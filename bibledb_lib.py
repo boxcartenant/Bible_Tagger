@@ -2,7 +2,7 @@ import json
 import sqlite3
 
 # update this when breaking schema changes are made, prevents attempting to merge incompatible databases
-CURRENT_DATABASE_VERSION = 1
+CURRENT_DATABASE_VERSION = 2
 
 def get_database_version(database_file):
     """Get the user_version (schema version) of a database file.
@@ -103,93 +103,57 @@ def merge_dbs(current_db_path, other_db_path):
 
         # Create mappings for ID translations
         tag_id_map = {}  # old_tag_id -> new_tag_id
-        note_id_map = {}  # old_note_id -> new_note_id
         verse_group_id_map = {}  # old_verse_group_id -> new_verse_group_id
         
-        # 1. Merge tags
+        # 1. Merge tags (with notes)
         print("Merging tags...")
-        other_cursor.execute("SELECT tag_id, tag FROM tag")
+        other_cursor.execute("SELECT tag_id, tag, note FROM tag")
         other_tags = other_cursor.fetchall()
         
         for tag in other_tags:
             old_tag_id = tag['tag_id']
             tag_name = tag['tag']
+            other_note = tag['note']
             
             # Check if tag already exists in current db
-            current_cursor.execute("SELECT tag_id FROM tag WHERE tag = ?", (tag_name,))
+            current_cursor.execute("SELECT tag_id, note FROM tag WHERE tag = ?", (tag_name,))
             existing = current_cursor.fetchone()
             
             if existing:
                 # Tag exists, use existing ID
                 tag_id_map[old_tag_id] = existing['tag_id']
+                
+                # Merge notes if both have notes
+                if other_note and existing['note']:
+                    merged_note = existing['note'] + "\n\n---MERGED---\n\n" + other_note
+                    current_cursor.execute("UPDATE tag SET note = ? WHERE tag_id = ?", 
+                                         (merged_note, existing['tag_id']))
+                elif other_note and not existing['note']:
+                    # Other has note, current doesn't - use other's note
+                    current_cursor.execute("UPDATE tag SET note = ? WHERE tag_id = ?", 
+                                         (other_note, existing['tag_id']))
             else:
-                # Tag doesn't exist, insert it
-                current_cursor.execute("INSERT INTO tag (tag) VALUES (?)", (tag_name,))
+                # Tag doesn't exist, insert it with note
+                current_cursor.execute("INSERT INTO tag (tag, note) VALUES (?, ?)", 
+                                     (tag_name, other_note))
                 new_tag_id = current_cursor.lastrowid
                 tag_id_map[old_tag_id] = new_tag_id
         
         current_conn.commit()
         print(f"Merged {len(other_tags)} tags")
         
-        # 2. Merge notes
-        print("Merging notes...")
-        other_cursor.execute("SELECT note_id, note FROM note")
-        other_notes = other_cursor.fetchall()
-        
-        for note in other_notes:
-            old_note_id = note['note_id']
-            note_text = note['note']
-            
-            # Check if exact note already exists
-            current_cursor.execute("SELECT note_id FROM note WHERE note = ?", (note_text,))
-            existing = current_cursor.fetchone()
-            
-            if existing:
-                # Note exists, use existing ID
-                note_id_map[old_note_id] = existing['note_id']
-            else:
-                # Note doesn't exist, insert it
-                current_cursor.execute("INSERT INTO note (note) VALUES (?)", (note_text,))
-                new_note_id = current_cursor.lastrowid
-                note_id_map[old_note_id] = new_note_id
-        
-        current_conn.commit()
-        print(f"Merged {len(other_notes)} notes")
-        
-        # 3. Merge verses
-        print("Merging verses...")
-        other_cursor.execute("SELECT verse_id, book, chapter, verse FROM verse")
-        other_verses = other_cursor.fetchall()
-        
-        for verse in other_verses:
-            verse_id = verse['verse_id']
-            book = verse['book']
-            chapter = verse['chapter']
-            verse_num = verse['verse']
-
-            # Check if verse already exists
-            current_cursor.execute("SELECT verse_id FROM verse WHERE verse_id = ?", (verse_id,))
-            if not current_cursor.fetchone():
-                # Verse doesn't exist, insert it with all required fields
-                current_cursor.execute(
-                    "INSERT INTO verse (verse_id, book, chapter, verse) VALUES (?, ?, ?, ?)",
-                    (verse_id, book, chapter, verse_num)
-                )
-
-        current_conn.commit()
-        print(f"Merged {len(other_verses)} verses")
-
-        # 4. Merge verse_groups
+        # 2. Merge verse_groups (with notes)
         print("Merging verse groups...")
-        other_cursor.execute("SELECT verse_group_id FROM verse_group")
+        other_cursor.execute("SELECT verse_group_id, note FROM verse_group")
         other_verse_groups = other_cursor.fetchall()
 
         for vg in other_verse_groups:
             old_vg_id = vg['verse_group_id']
+            other_note = vg['note']
             
             # Get all verses in this group from other db
             other_cursor.execute("""
-                SELECT verse_id FROM verse_group
+                SELECT verse_id FROM verse_group_verse
                 WHERE verse_group_id = ?
                 ORDER BY verse_id
             """, (old_vg_id,))
@@ -197,72 +161,78 @@ def merge_dbs(current_db_path, other_db_path):
             
             # Check if this exact verse group already exists in current db
             # A verse group is uniquely identified by its set of verses
-            if len(verses_in_group) == 1:
-                # Single verse, no verse_group needed
-                verse_group_id_map[old_vg_id] = None
+            if len(verses_in_group) == 0:
+                # Empty verse group, skip it
+                continue
+                
+            # Check if this combination of verses already exists as a group
+            placeholders = ','.join('?' * len(verses_in_group))
+            current_cursor.execute(f"""
+                SELECT verse_group_id, COUNT(*) as count
+                FROM verse_group_verse
+                WHERE verse_id IN ({placeholders})
+                GROUP BY verse_group_id
+                HAVING count = ?
+            """, verses_in_group + [len(verses_in_group)])
+            
+            matching_groups = current_cursor.fetchall()
+            
+            # Verify it's an exact match (not a superset)
+            exact_match = None
+            for group in matching_groups:
+                current_cursor.execute("""
+                    SELECT verse_id FROM verse_group_verse
+                    WHERE verse_group_id = ?
+                    ORDER BY verse_id
+                """, (group['verse_group_id'],))
+                current_verses = [row['verse_id'] for row in current_cursor.fetchall()]
+                if current_verses == verses_in_group:
+                    exact_match = group['verse_group_id']
+                    break
+            
+            if exact_match:
+                # Group exists, use existing ID
+                verse_group_id_map[old_vg_id] = exact_match
+                
+                # Merge notes if both have notes
+                current_cursor.execute("SELECT note FROM verse_group WHERE verse_group_id = ?", 
+                                     (exact_match,))
+                current_note = current_cursor.fetchone()['note']
+                
+                if other_note and current_note:
+                    merged_note = current_note + "\n\n---MERGED---\n\n" + other_note
+                    current_cursor.execute("UPDATE verse_group SET note = ? WHERE verse_group_id = ?", 
+                                         (merged_note, exact_match))
+                elif other_note and not current_note:
+                    # Other has note, current doesn't - use other's note
+                    current_cursor.execute("UPDATE verse_group SET note = ? WHERE verse_group_id = ?", 
+                                         (other_note, exact_match))
             else:
-                # Check if this combination of verses already exists as a group
-                placeholders = ','.join('?' * len(verses_in_group))
-                current_cursor.execute(f"""
-                    SELECT verse_group_id, COUNT(*) as count
-                    FROM verse_group
-                    WHERE verse_id IN ({placeholders})
-                    GROUP BY verse_group_id
-                    HAVING count = ?
-                """, verses_in_group + [len(verses_in_group)])
+                # Group doesn't exist, create new one
+                # Insert verse_group with note (AUTOINCREMENT handles ID)
+                current_cursor.execute("""
+                    INSERT INTO verse_group (note) VALUES (?)
+                """, (other_note,))
+                new_vg_id = current_cursor.lastrowid
                 
-                matching_groups = current_cursor.fetchall()
-                
-                # Verify it's an exact match (not a superset)
-                exact_match = None
-                for group in matching_groups:
+                # Insert all verses in verse_group_verse junction table
+                for verse_id in verses_in_group:
+                    # Get book, chapter, verse for the junction table
+                    parts = verse_id.split('.')
+                    book = int(parts[0])
+                    chapter = int(parts[1])
+                    verse_num = int(parts[2])
                     current_cursor.execute("""
-                        SELECT verse_id FROM verse_group
-                        WHERE verse_group_id = ?
-                        ORDER BY verse_id
-                    """, (group['verse_group_id'],))
-                    current_verses = [row['verse_id'] for row in current_cursor.fetchall()]
-                    if current_verses == verses_in_group:
-                        exact_match = group['verse_group_id']
-                        break
+                        INSERT INTO verse_group_verse (verse_group_id, verse_id, book, chapter, verse)
+                        VALUES (?, ?, ?, ?, ?)
+                    """, (new_vg_id, verse_id, book, chapter, verse_num))
                 
-                if exact_match:
-                    # Group exists, use existing ID
-                    verse_group_id_map[old_vg_id] = exact_match
-                else:
-                    # Group doesn't exist, create new one
-                    # First, ensure all verses exist in current db
-                    for verse_id in verses_in_group:
-                        current_cursor.execute("SELECT verse_id FROM verse WHERE verse_id = ?", (verse_id,))
-                        if not current_cursor.fetchone():
-                            # Parse verse_id to extract book, chapter, verse
-                            parts = verse_id.split('.')
-                            book = int(parts[0])
-                            chapter = int(parts[1])
-                            verse_num = int(parts[2])
-                            current_cursor.execute(
-                                "INSERT INTO verse (verse_id, book, chapter, verse) VALUES (?, ?, ?, ?)",
-                                (verse_id, book, chapter, verse_num)
-                            )
-                    
-                    # Get next verse_group_id
-                    current_cursor.execute("SELECT MAX(verse_group_id) FROM verse_group")
-                    result = current_cursor.fetchone()[0]
-                    new_vg_id = (result if result else 0) + 1
-                    
-                    # Insert all verses with this group ID
-                    for verse_id in verses_in_group:
-                        current_cursor.execute("""
-                            INSERT INTO verse_group (verse_group_id, verse_id)
-                            VALUES (?, ?)
-                        """, (new_vg_id, verse_id))
-                    
-                    verse_group_id_map[old_vg_id] = new_vg_id
+                verse_group_id_map[old_vg_id] = new_vg_id
         
         current_conn.commit()
         print(f"Merged {len(other_verse_groups)} verse groups")
         
-        # 5. Merge verse_group_tag relationships
+        # 4. Merge verse_group_tag relationships
         print("Merging verse-tag relationships...")
         other_cursor.execute("SELECT verse_group_id, tag_id FROM verse_group_tag")
         vg_tags = other_cursor.fetchall()
@@ -290,61 +260,7 @@ def merge_dbs(current_db_path, other_db_path):
         current_conn.commit()
         print(f"Merged {len(vg_tags)} verse-tag relationships")
         
-        # 6. Merge verse_group_note relationships
-        print("Merging verse-note relationships...")
-        other_cursor.execute("SELECT verse_group_id, note_id FROM verse_group_note")
-        v_notes = other_cursor.fetchall()
-        
-        for v_note in v_notes:
-            old_vg_id = v_note['verse_group_id']
-            old_note_id = v_note['note_id']
-            new_vg_id = verse_group_id_map.get(old_vg_id)
-            new_note_id = note_id_map.get(old_note_id)
-            
-            if new_vg_id is not None and new_note_id is not None:
-                # Check if relationship already exists
-                current_cursor.execute("""
-                    SELECT 1 FROM verse_group_note
-                    WHERE verse_group_id = ? AND note_id = ?
-                """, (new_vg_id, new_note_id))
-                
-                if not current_cursor.fetchone():
-                    current_cursor.execute("""
-                        INSERT INTO verse_group_note (verse_group_id, note_id)
-                        VALUES (?, ?)
-                    """, (new_vg_id, new_note_id))
-        
-        current_conn.commit()
-        print(f"Merged {len(v_notes)} verse-note relationships")
-        
-        # 7. Merge tag_note relationships
-        print("Merging tag-note relationships...")
-        other_cursor.execute("SELECT tag_id, note_id FROM tag_note")
-        t_notes = other_cursor.fetchall()
-        
-        for t_note in t_notes:
-            old_tag_id = t_note['tag_id']
-            old_note_id = t_note['note_id']
-            new_tag_id = tag_id_map.get(old_tag_id)
-            new_note_id = note_id_map.get(old_note_id)
-            
-            if new_tag_id is not None and new_note_id is not None:
-                # Check if relationship already exists
-                current_cursor.execute("""
-                    SELECT 1 FROM tag_note
-                    WHERE tag_id = ? AND note_id = ?
-                """, (new_tag_id, new_note_id))
-                
-                if not current_cursor.fetchone():
-                    current_cursor.execute("""
-                        INSERT INTO tag_note (tag_id, note_id)
-                        VALUES (?, ?)
-                    """, (new_tag_id, new_note_id))
-        
-        current_conn.commit()
-        print(f"Merged {len(t_notes)} tag-note relationships")
-        
-        # 8. Merge tag_tag relationships
+        # 5. Merge tag_tag relationships
         print("Merging tag-tag relationships...")
         other_cursor.execute("SELECT tag_1_id, tag_2_id FROM tag_tag")
         t_tags = other_cursor.fetchall()
@@ -353,20 +269,24 @@ def merge_dbs(current_db_path, other_db_path):
             old_tag1_id = t_tag['tag_1_id']
             old_tag_2_id = t_tag['tag_2_id']
             new_tag_1_id = tag_id_map.get(old_tag1_id)
-            old_tag_2_id = tag_id_map.get(old_tag_2_id)
+            new_tag_2_id = tag_id_map.get(old_tag_2_id)
             
-            if new_tag_1_id is not None and old_tag_2_id is not None:
+            if new_tag_1_id is not None and new_tag_2_id is not None:
+                # Ensure tag_1_id < tag_2_id per CHECK constraint
+                if new_tag_1_id > new_tag_2_id:
+                    new_tag_1_id, new_tag_2_id = new_tag_2_id, new_tag_1_id
+                
                 # Check if relationship already exists
                 current_cursor.execute("""
                     SELECT 1 FROM tag_tag
                     WHERE tag_1_id = ? AND tag_2_id = ?
-                """, (new_tag_1_id, old_tag_2_id))
+                """, (new_tag_1_id, new_tag_2_id))
                 
                 if not current_cursor.fetchone():
                     current_cursor.execute("""
                         INSERT INTO tag_tag (tag_1_id, tag_2_id)
                         VALUES (?, ?)
-                    """, (new_tag_1_id, old_tag_2_id))
+                    """, (new_tag_1_id, new_tag_2_id))
         
         current_conn.commit()
         print(f"Merged {len(t_tags)} tag-tag relationships")
@@ -488,14 +408,6 @@ def get_row_by_column(list_of_dicts, target_value, column_name):
 def make_verse_id(book, chapter, verse):
     """Generate a verse_id in format 'book.chapter.verse' (e.g., '0.1.1' for Gen 1:1)"""
     return f"{book}.{chapter}.{verse}"
-
-# Helper function to get or create a verse_group_id
-# temporary until a unique ID system is implemented
-def get_or_create_verse_group_id(cursor):
-    """Get the next available verse_group_id"""
-    cursor.execute('SELECT MAX(verse_group_id) FROM verse_group')
-    result = cursor.fetchone()[0]
-    return (result + 1) if result is not None else 1
 
 # Helper function to expand verse ranges using the loaded Bible data
 def expand_verse_range(start_book, start_chapter, start_verse, end_book, end_chapter, end_verse, bible_data):
@@ -661,90 +573,58 @@ def makeDB(sqlite_database):
     conn = sqlite3.connect(sqlite_database)
     cursor = conn.cursor()
 
-    # Create the 'verse' table (temporary until a unique verse id system)
+    # Create the 'verse_group' table
     cursor.execute('''
-        CREATE TABLE IF NOT EXISTS verse (
-            verse_id TEXT PRIMARY KEY,
-            book INTEGER NOT NULL,
-            chapter INTEGER NOT NULL,
-            verse INTEGER NOT NULL,
-            UNIQUE(book, chapter, verse)
-        )
+            CREATE TABLE IF NOT EXISTS verse_group (
+                verse_group_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                note TEXT
+            )
+    ''')
+
+    # Create the 'verse_group_verse' table
+    # BOOK, CHAPTER, VERSE are included. verse_id is calculated based on these three fields
+    cursor.execute('''
+            CREATE TABLE IF NOT EXISTS verse_group_verse (
+                verse_group_id INTEGER NOT NULL,
+                verse_id TEXT NOT NULL,
+                book INTEGER NOT NULL,
+                chapter INTEGER NOT NULL,
+                verse INTEGER NOT NULL,
+                PRIMARY KEY (verse_group_id, verse_id),
+                FOREIGN KEY (verse_group_id) REFERENCES verse_group (verse_group_id) ON DELETE CASCADE
+            )
     ''')
 
     # Create the 'tag' table
     cursor.execute('''
-        CREATE TABLE IF NOT EXISTS tag (
-            tag_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            tag TEXT NOT NULL,
-            UNIQUE(tag)
-        )
-    ''')
-
-    # Create the 'note' table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS note (
-            note_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            note TEXT NOT NULL
-        )
-    ''')
-
-    # Create the 'verse_group' table
-    cursor.execute('''
-            CREATE TABLE IF NOT EXISTS verse_group (
-                verse_group_id INTEGER NOT NULL,
-                verse_id TEXT NOT NULL,
-                PRIMARY KEY (verse_group_id, verse_id),
-                FOREIGN KEY (verse_id) REFERENCES verse (verse_id),
-                UNIQUE(verse_group_id, verse_id)
+            CREATE TABLE IF NOT EXISTS tag (
+                tag_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tag TEXT NOT NULL UNIQUE,
+                note TEXT
             )
     ''')
 
     # Create the 'verse_group_tag' table to associate verse_groups with tags
     cursor.execute('''
-        CREATE TABLE IF NOT EXISTS verse_group_tag (
-            verse_group_id INTEGER NOT NULL,
-            tag_id INTEGER NOT NULL,
-            PRIMARY KEY (verse_group_id, tag_id),
-            FOREIGN KEY (verse_group_id) REFERENCES verse_group (verse_group_id),
-            FOREIGN KEY (tag_id) REFERENCES tag (tag_id),
-            UNIQUE(verse_group_id, tag_id)
-        )
-    ''')
-
-    # Create the 'verse_group_note' table to associate verse_groups with notes
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS verse_group_note (
-            verse_group_id INTEGER NOT NULL,
-            note_id INTEGER NOT NULL,
-            PRIMARY KEY (verse_group_id, note_id),
-            FOREIGN KEY (verse_group_id) REFERENCES verse_group_note (verse_group_id),
-            FOREIGN KEY (note_id) REFERENCES note (note_id),
-            UNIQUE(verse_group_id, note_id)
-        )
-    ''')
-
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS tag_note (
-            tag_id INTEGER NOT NULL,
-            note_id INTEGER NOT NULL,
-            PRIMARY KEY (tag_id, note_id),
-            FOREIGN KEY (tag_id) REFERENCES tag (tag_id),
-            FOREIGN KEY (note_id) REFERENCES note (note_id),
-            UNIQUE(tag_id, note_id)
-        )
+            CREATE TABLE IF NOT EXISTS verse_group_tag (
+                verse_group_id INTEGER NOT NULL,
+                tag_id INTEGER NOT NULL,
+                PRIMARY KEY (verse_group_id, tag_id),
+                FOREIGN KEY (verse_group_id) REFERENCES verse_group (verse_group_id) ON DELETE CASCADE,
+                FOREIGN KEY (tag_id) REFERENCES tag (tag_id) ON DELETE CASCADE
+            )
     ''')
 
     #tag_tags is for synonyms
     cursor.execute('''
-        CREATE TABLE IF NOT EXISTS tag_tag (
-            tag_1_id INTEGER NOT NULL,
-            tag_2_id INTEGER NOT NULL,
-            PRIMARY KEY (tag_1_id, tag_2_id),
-            FOREIGN KEY (tag_1_id) REFERENCES tag (tag_id),
-            FOREIGN KEY (tag_2_id) REFERENCES tag (tag_id),
-            UNIQUE(tag_1_id, tag_2_id)
-        )
+            CREATE TABLE IF NOT EXISTS tag_tag (
+                tag_1_id INTEGER NOT NULL,
+                tag_2_id INTEGER NOT NULL,
+                PRIMARY KEY (tag_1_id, tag_2_id),
+                CHECK (tag_1_id < tag_2_id),
+                FOREIGN KEY (tag_1_id) REFERENCES tag(tag_id) ON DELETE CASCADE,
+                FOREIGN KEY (tag_2_id) REFERENCES tag(tag_id) ON DELETE CASCADE 
+            )
     ''')
 
     cursor.execute(f"PRAGMA user_version = {CURRENT_DATABASE_VERSION}")
@@ -764,9 +644,6 @@ def add_verse_tag(database_file, verse_ref, tag_name, bible_data):
     conn = sqlite3.connect(database_file)
     cursor = conn.cursor()
 
-    # Create a verse_group for this verse range
-    verse_group_id = get_or_create_verse_group_id(cursor)
-
     start_book    = entry["start_book"]
     end_book      = entry["end_book"]
     start_chapter = int(entry["start_chapter"])
@@ -779,17 +656,19 @@ def add_verse_tag(database_file, verse_ref, tag_name, bible_data):
     else:
         raise Exception("Bible data is required to expand verse ranges.")
 
-    # Insert all verses in the range
+    # Create verse_group entry (AUTOINCREMENT will assign ID)
+    cursor.execute('''
+        INSERT INTO verse_group (note) VALUES (NULL)
+    ''')
+    verse_group_id = cursor.lastrowid
+    
+    # Insert all verses in the range into verse_group_verse
     for book, chapter, verse in all_verses:
         verse_id = make_verse_id(book, chapter, verse)
         cursor.execute('''
-            INSERT OR IGNORE INTO verse (verse_id, book, chapter, verse)
-            VALUES (?, ?, ?, ?)
-        ''', (verse_id, book, chapter, verse))
-        cursor.execute('''
-            INSERT OR IGNORE INTO verse_group (verse_group_id, verse_id)
-            VALUES (?, ?)
-        ''', (verse_group_id, verse_id))
+            INSERT OR IGNORE INTO verse_group_verse (verse_group_id, verse_id, book, chapter, verse)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (verse_group_id, verse_id, book, chapter, verse))
     
     # Insert tag into 'tag' table if it doesn't exist
     cursor.execute('''
@@ -830,7 +709,7 @@ def delete_verse_tag(database_file, verse, tag):
 
     # Find verse_groups containing this verse
     cursor.execute('''
-        SELECT verse_group_id FROM verse_group WHERE verse_id = ?
+        SELECT verse_group_id FROM verse_group_verse WHERE verse_id = ?
     ''', (start_verse_id,))
     verse_groups = cursor.fetchall()
 
@@ -841,45 +720,30 @@ def delete_verse_tag(database_file, verse, tag):
                 DELETE FROM verse_group_tag WHERE verse_group_id = ? AND tag_id = ?
             ''', (verse_group_id, tag_id))
             
-            # Check if this verse_group has any other tags or notes
+            # Check if this verse_group has any tags, verses, or notes
             cursor.execute('''
                 SELECT COUNT(*) FROM verse_group_tag WHERE verse_group_id = ?
             ''', (verse_group_id,))
             tag_count = cursor.fetchone()[0]
             
             cursor.execute('''
-                SELECT COUNT(*) FROM verse_group_note WHERE verse_group_id = ?
+                SELECT COUNT(*) FROM verse_group_verse WHERE verse_group_id = ?
             ''', (verse_group_id,))
-            note_count = cursor.fetchone()[0]
+            verse_count = cursor.fetchone()[0]
             
-            # If no more tags or notes, delete the verse_group
-            if tag_count == 0 and note_count == 0:
+            cursor.execute('''
+                SELECT note FROM verse_group WHERE verse_group_id = ?
+            ''', (verse_group_id,))
+            note_result = cursor.fetchone()
+            has_note = note_result and note_result[0] is not None
+            
+            # If no tags, no verses, and no note, delete the verse_group
+            if tag_count == 0 and verse_count == 0 and not has_note:
                 cursor.execute('''
                     DELETE FROM verse_group WHERE verse_group_id = ?
                 ''', (verse_group_id,))
 
-        # Check if tag is orphaned (no more verse_groups or tag_tag associations)
-        cursor.execute('''
-            SELECT COUNT(*) FROM verse_group_tag WHERE tag_id = ?
-        ''', (tag_id,))
-        remaining_verse_tags = cursor.fetchone()[0]
-
-        cursor.execute('''
-            SELECT COUNT(*) FROM tag_tag WHERE tag_1_id = ? OR tag_2_id = ?
-        ''', (tag_id, tag_id))
-        remaining_tag_tags = cursor.fetchone()[0]
-        
-        cursor.execute('''
-            SELECT COUNT(*) FROM tag_note WHERE tag_id = ?
-        ''', (tag_id,))
-        remaining_tag_notes = cursor.fetchone()[0]
-
-        if remaining_verse_tags == 0 and remaining_tag_tags == 0 and remaining_tag_notes == 0:
-            # Delete the tag if it's orphaned
-            cursor.execute('''
-                DELETE FROM tag WHERE tag_id = ?
-            ''', (tag_id,))
-
+        # Don't delete orphaned tags (per user requirement)
         conn.commit()
     else:
         print(f"Verse '{verse}' not found.")
@@ -936,56 +800,17 @@ def delete_tag_tag(database_file, tag1, tag2):
     tag1_id = tag1_result[0]
     tag2_id = tag2_result[0]
 
-    # Delete both directional associations
+    # Ensure we handle both orderings of the tag pair
+    # Since we have CHECK (tag_1_id < tag_2_id), normalize the order
+    if tag1_id > tag2_id:
+        tag1_id, tag2_id = tag2_id, tag1_id
+    
+    # Delete the association (only one direction due to CHECK constraint)
     cursor.execute('''
         DELETE FROM tag_tag WHERE tag_1_id = ? AND tag_2_id = ?
     ''', (tag1_id, tag2_id))
-
-    cursor.execute('''
-        DELETE FROM tag_tag WHERE tag_1_id = ? AND tag_2_id = ?
-    ''', (tag2_id, tag1_id))
     
-    # Check if tag1 is orphaned
-    cursor.execute('''
-        SELECT COUNT(*) FROM verse_group_tag WHERE tag_id = ?
-    ''', (tag1_id,))
-    remaining_verse_tags1 = cursor.fetchone()[0]
-
-    cursor.execute('''
-        SELECT COUNT(*) FROM tag_tag WHERE tag_1_id = ? OR tag_2_id = ?
-    ''', (tag1_id, tag1_id))
-    remaining_tag_tags1 = cursor.fetchone()[0]
-    
-    cursor.execute('''
-        SELECT COUNT(*) FROM tag_note WHERE tag_id = ?
-    ''', (tag1_id,))
-    remaining_tag_notes1 = cursor.fetchone()[0]
-
-    if remaining_verse_tags1 == 0 and remaining_tag_tags1 == 0 and remaining_tag_notes1 == 0:
-        cursor.execute('''
-            DELETE FROM tag WHERE tag_id = ?
-        ''', (tag1_id,))
-
-    # Check if tag2 is orphaned
-    cursor.execute('''
-        SELECT COUNT(*) FROM verse_group_tag WHERE tag_id = ?
-    ''', (tag2_id,))
-    remaining_verse_tags2 = cursor.fetchone()[0]
-
-    cursor.execute('''
-        SELECT COUNT(*) FROM tag_tag WHERE tag_1_id = ? OR tag_2_id = ?
-    ''', (tag2_id, tag2_id))
-    remaining_tag_tags2 = cursor.fetchone()[0]
-    
-    cursor.execute('''
-        SELECT COUNT(*) FROM tag_note WHERE tag_id = ?
-    ''', (tag2_id,))
-    remaining_tag_notes2 = cursor.fetchone()[0]
-
-    if remaining_verse_tags2 == 0 and remaining_tag_tags2 == 0 and remaining_tag_notes2 == 0:
-        cursor.execute('''
-            DELETE FROM tag WHERE tag_id = ?
-        ''', (tag2_id,))
+    # Don't delete orphaned tags (per user requirement)
 
     conn.commit()
     conn.close()
@@ -996,10 +821,7 @@ def add_verse_note(database_file, verse_ref, note, bible_data):
     conn = sqlite3.connect(database_file)
     cursor = conn.cursor()
     
-    # Create a verse_group for this verse range
-    verse_group_id = get_or_create_verse_group_id(cursor)
-    
-    # Insert all verses in the range into 'verse' table and link to verse_group
+    # Insert all verses in the range into verse_group
     start_book = entry["start_book"]
     end_book = entry["end_book"]
     start_chapter = int(entry["start_chapter"])
@@ -1012,36 +834,24 @@ def add_verse_note(database_file, verse_ref, note, bible_data):
     else:
         raise Exception("Bible data is required to expand verse ranges.")
 
-    # Insert all verses in the range
+    # Create verse_group entry (AUTOINCREMENT will assign ID)
+    cursor.execute('''
+        INSERT INTO verse_group (note) VALUES (NULL)
+    ''')
+    verse_group_id = cursor.lastrowid
+    
+    # Insert all verses in the range into verse_group_verse
     for book, chapter, verse in all_verses:
         verse_id = make_verse_id(book, chapter, verse)
         cursor.execute('''
-            INSERT OR IGNORE INTO verse (verse_id, book, chapter, verse)
-            VALUES (?, ?, ?, ?)
-        ''', (verse_id, book, chapter, verse))
-        cursor.execute('''
-            INSERT OR IGNORE INTO verse_group (verse_group_id, verse_id)
-            VALUES (?, ?)
-        ''', (verse_group_id, verse_id))
+            INSERT OR IGNORE INTO verse_group_verse (verse_group_id, verse_id, book, chapter, verse)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (verse_group_id, verse_id, book, chapter, verse))
     
-    # Check if a note already exists for this verse_group_id in verse_group_note
-    cursor.execute('SELECT note_id FROM verse_group_note WHERE verse_group_id = ?', (verse_group_id,))
-    existing_note_id = cursor.fetchone()
-
-    if existing_note_id:
-        # If a note already exists, update the existing note
-        cursor.execute('UPDATE note SET note = ? WHERE note_id = ?', (entry["note"], existing_note_id[0]))
-    else:
-        # Insert note into 'note' table
-        cursor.execute('''
-            INSERT INTO note (note) VALUES (?)
-        ''', (entry["note"],))
-        note_id = cursor.lastrowid
-
-        # Insert association into 'verse_group_note' table
-        cursor.execute('''
-            INSERT OR IGNORE INTO verse_group_note (verse_group_id, note_id) VALUES (?, ?)
-        ''', (verse_group_id, note_id))
+    # Update note directly on verse_group
+    cursor.execute('''
+        UPDATE verse_group SET note = ? WHERE verse_group_id = ?
+    ''', (entry["note"], verse_group_id))
         
     conn.commit()
     conn.close()
@@ -1057,7 +867,7 @@ def delete_verse_note(database_file, verse):
     try:
         # Find verse_groups containing this verse
         cursor.execute('''
-            SELECT verse_group_id FROM verse_group WHERE verse_id = ?
+            SELECT verse_group_id FROM verse_group_verse WHERE verse_id = ?
         ''', (start_verse_id,))
         verse_groups = cursor.fetchall()
 
@@ -1067,39 +877,33 @@ def delete_verse_note(database_file, verse):
             return
 
         for (verse_group_id,) in verse_groups:
-            # Get note_id for this verse_group
-            cursor.execute('SELECT note_id FROM verse_group_note WHERE verse_group_id = ?', (verse_group_id,))
-            note_result = cursor.fetchone()
+            # Set note to NULL on verse_group
+            cursor.execute('''
+                UPDATE verse_group SET note = NULL WHERE verse_group_id = ?
+            ''', (verse_group_id,))
+                
+            # Check if this verse_group has any tags, verses, or notes
+            cursor.execute('''
+                SELECT COUNT(*) FROM verse_group_tag WHERE verse_group_id = ?
+            ''', (verse_group_id,))
+            tag_count = cursor.fetchone()[0]
             
-            if note_result:
-                note_id = note_result[0]
-                
-                # Delete the association
+            cursor.execute('''
+                SELECT COUNT(*) FROM verse_group_verse WHERE verse_group_id = ?
+            ''', (verse_group_id,))
+            verse_count = cursor.fetchone()[0]
+            
+            cursor.execute('''
+                SELECT note FROM verse_group WHERE verse_group_id = ?
+            ''', (verse_group_id,))
+            note_result = cursor.fetchone()
+            has_note = note_result and note_result[0] is not None
+            
+            # If no tags, no verses, and no note, delete the verse_group
+            if tag_count == 0 and verse_count == 0 and not has_note:
                 cursor.execute('''
-                    DELETE FROM verse_group_note WHERE verse_group_id = ? AND note_id = ?
-                ''', (verse_group_id, note_id))
-
-                # Delete the note itself
-                cursor.execute('''
-                    DELETE FROM note WHERE note_id = ?
-                ''', (note_id,))
-                
-                # Check if this verse_group has any other tags or notes
-                cursor.execute('''
-                    SELECT COUNT(*) FROM verse_group_tag WHERE verse_group_id = ?
+                    DELETE FROM verse_group WHERE verse_group_id = ?
                 ''', (verse_group_id,))
-                tag_count = cursor.fetchone()[0]
-                
-                cursor.execute('''
-                    SELECT COUNT(*) FROM verse_group_note WHERE verse_group_id = ?
-                ''', (verse_group_id,))
-                note_count = cursor.fetchone()[0]
-                
-                # If no more tags or notes, delete the verse_group
-                if tag_count == 0 and note_count == 0:
-                    cursor.execute('''
-                        DELETE FROM verse_group WHERE verse_group_id = ?
-                    ''', (verse_group_id,))
 
         conn.commit()
         
@@ -1125,25 +929,10 @@ def add_tag_note(database_file, tag_name, note):
     cursor.execute('SELECT tag_id FROM tag WHERE tag = ?', (entry["tag"],))
     tag_id = cursor.fetchone()[0]
 
-    # Check if a note already exists for this tag_id in tag_note
-    cursor.execute('SELECT note_id FROM tag_note WHERE tag_id = ?', (tag_id,))
-    existing_note_id = cursor.fetchone()
-
-    if existing_note_id:
-        # If a note already exists, update the existing note
-        cursor.execute('UPDATE note SET note = ? WHERE note_id = ?', (entry["note"], existing_note_id[0]))
-    else:
-        # Insert note into 'note' table
-        cursor.execute('''
-            INSERT INTO note (note) VALUES (?)
-        ''', (entry["note"],))
-
-        note_id = cursor.lastrowid
-
-        # Insert association into 'tag_note' table
-        cursor.execute('''
-            INSERT OR IGNORE INTO tag_note (tag_id, note_id) VALUES (?, ?)
-        ''', (tag_id, note_id))
+    # Update note directly on tag
+    cursor.execute('''
+        UPDATE tag SET note = ? WHERE tag_id = ?
+    ''', (entry["note"], tag_id))
     
     conn.commit()
     conn.close()
@@ -1164,25 +953,12 @@ def delete_tag_note(database_file, tag):
         
     tag_id = tag_result[0]
 
-    cursor.execute('SELECT note_id FROM tag_note WHERE tag_id = ?', (tag_id,))
-    note_result = cursor.fetchone()
+    # Set note to NULL on tag
+    cursor.execute('''
+        UPDATE tag SET note = NULL WHERE tag_id = ?
+    ''', (tag_id,))
     
-    if not note_result:
-        print(f"No note found for tag '{tag}'.")
-        conn.close()
-        return
-        
-    note_id = note_result[0]
-
-    # Delete the association
-    cursor.execute('''
-        DELETE FROM tag_note WHERE tag_id = ? AND note_id = ?
-    ''', (tag_id, note_id))
-
-    # Delete the note itself
-    cursor.execute('''
-        DELETE FROM note WHERE note_id = ?
-    ''', (note_id,))
+    # Don't delete orphaned tags (per user requirement)
 
     conn.commit()
     conn.close()
@@ -1221,17 +997,16 @@ def get_db_stuff(database_file, x_type, y_type, y_value):
                 SELECT t.*
                 FROM tag t
                 JOIN verse_group_tag vgt ON t.tag_id = vgt.tag_id
-                JOIN verse_group vg ON vgt.verse_group_id = vg.verse_group_id
-                WHERE vg.verse_id = ?
+                JOIN verse_group_verse vgv ON vgt.verse_group_id = vgv.verse_group_id
+                WHERE vgv.verse_id = ?
             '''
             cursor.execute(query_string, (verse_id,))
         elif x_type == "note":
             query_string = '''
-                SELECT n.*
-                FROM note n
-                JOIN verse_group_note vn ON n.note_id = vn.note_id
-                JOIN verse_group vg ON vn.verse_group_id = vg.verse_group_id
-                WHERE vg.verse_id = ?
+                SELECT vg.note
+                FROM verse_group vg
+                JOIN verse_group_verse vgv ON vg.verse_group_id = vgv.verse_group_id
+                WHERE vgv.verse_id = ? AND vg.note IS NOT NULL
             '''
             cursor.execute(query_string, (verse_id,))
             
@@ -1264,11 +1039,10 @@ def get_db_stuff(database_file, x_type, y_type, y_value):
             # For each verse_group, get the range of verses
             for vg_id in verse_group_ids:
                 cursor.execute('''
-                    SELECT v.book, v.chapter, v.verse
-                    FROM verse v
-                    JOIN verse_group vg ON v.verse_id = vg.verse_id
-                    WHERE vg.verse_group_id = ?
-                    ORDER BY v.book, v.chapter, v.verse
+                    SELECT book, chapter, verse
+                    FROM verse_group_verse
+                    WHERE verse_group_id = ?
+                    ORDER BY book, chapter, verse
                 ''', (vg_id,))
                 verses_in_group = cursor.fetchall()
                 
@@ -1290,11 +1064,9 @@ def get_db_stuff(database_file, x_type, y_type, y_value):
         elif x_type == "note":
             # Get note for this tag
             query_string = '''
-                SELECT n.*
-                FROM note n
-                JOIN tag_note tn ON n.note_id = tn.note_id
-                JOIN tag t ON tn.tag_id = t.tag_id
-                WHERE t.tag = ?
+                SELECT t.note
+                FROM tag t
+                WHERE t.tag = ? AND t.note IS NOT NULL
             '''
             cursor.execute(query_string, (y_value,))
     else:
@@ -1363,14 +1135,13 @@ def find_note_tag_chapters(database_file):
     #get all verses which have tags or notes via verse_groups
     cursor.execute('''
         SELECT DISTINCT 
-            v.book AS book,
-            v.chapter AS chapter
-        FROM verse v
-        JOIN verse_group vg ON v.verse_id = vg.verse_id
+            vgv.book AS book,
+            vgv.chapter AS chapter
+        FROM verse_group_verse vgv
+        JOIN verse_group vg ON vgv.verse_group_id = vg.verse_group_id
         LEFT JOIN verse_group_tag vgt ON vg.verse_group_id = vgt.verse_group_id
-        LEFT JOIN verse_group_note vn ON vg.verse_group_id = vn.verse_group_id
         WHERE vgt.tag_id IS NOT NULL 
-           OR vn.note_id IS NOT NULL
+           OR vg.note IS NOT NULL
         ORDER BY book, chapter;
         ''',)
 
@@ -1396,22 +1167,21 @@ def get_all_verses_with_notes(database_file):
 
     # Get all verse_groups that have notes
     cursor.execute("""
-            SELECT DISTINCT vg.verse_group_id
+            SELECT DISTINCT vg.verse_group_id, vg.note
             FROM verse_group vg
-            JOIN verse_group_note vn ON vg.verse_group_id = vn.verse_group_id
+            WHERE vg.note IS NOT NULL
         """)
 
-    verse_group_ids = [row[0] for row in cursor.fetchall()]
+    verse_groups = cursor.fetchall()
     
     verses_notes = []
-    for vg_id in verse_group_ids:
+    for vg_id, note_text in verse_groups:
         # Get all verses in this verse_group
         cursor.execute("""
-            SELECT v.book, v.chapter, v.verse
-            FROM verse v
-            JOIN verse_group vg ON v.verse_id = vg.verse_id
-            WHERE vg.verse_group_id = ?
-            ORDER BY v.book, v.chapter, v.verse
+            SELECT book, chapter, verse
+            FROM verse_group_verse
+            WHERE verse_group_id = ?
+            ORDER BY book, chapter, verse
         """, (vg_id,))
         
         verses_in_group = cursor.fetchall()
@@ -1429,9 +1199,7 @@ def get_all_verses_with_notes(database_file):
                 'end_verse': last[2]
             }
             verse_ref = normalize_vref(verse_dict)
-            notes = get_db_stuff(database_file, "note", "verse", verse_ref)
-            if notes:
-                verses_notes.append({"verse": verse_ref, "note": notes[0]['note']})
+            verses_notes.append({"verse": verse_ref, "note": note_text})
     
     conn.close()
     return verses_notes
@@ -1453,11 +1221,10 @@ def find_note_tag_verses(database_file, book, chapter):
 
     # Get all verse_groups that have tags
     cursor.execute('''
-        SELECT DISTINCT vg.verse_group_id
-        FROM verse v
-        JOIN verse_group vg ON v.verse_id = vg.verse_id
-        WHERE v.book = ? AND v.chapter = ?
-            AND vg.verse_group_id IN (
+        SELECT DISTINCT vgv.verse_group_id
+        FROM verse_group_verse vgv
+        WHERE vgv.book = ? AND vgv.chapter = ?
+            AND vgv.verse_group_id IN (
                 SELECT verse_group_id FROM verse_group_tag
             )
         ''', (book, chapter))
@@ -1465,13 +1232,11 @@ def find_note_tag_verses(database_file, book, chapter):
 
     # Get all verse_groups that have notes
     cursor.execute('''
-        SELECT DISTINCT vg.verse_group_id
-        FROM verse v
-        JOIN verse_group vg ON v.verse_id = vg.verse_id
-        WHERE v.book = ? AND v.chapter = ?
-            AND vg.verse_group_id IN (
-                SELECT verse_group_id FROM verse_group_note
-            )
+        SELECT DISTINCT vgv.verse_group_id
+        FROM verse_group_verse vgv
+        JOIN verse_group vg ON vgv.verse_group_id = vg.verse_group_id
+        WHERE vgv.book = ? AND vgv.chapter = ?
+            AND vg.note IS NOT NULL
         ''', (book, chapter))
     noted_group_ids = set(row[0] for row in cursor.fetchall())
 
@@ -1482,11 +1247,10 @@ def find_note_tag_verses(database_file, book, chapter):
     for verse_group_id in all_group_ids:
         # Get all verses in this verse_group to determine the range
         cursor.execute('''
-            SELECT v.book, v.chapter, v.verse
-            FROM verse v
-            JOIN verse_group vg ON v.verse_id = vg.verse_id
-            WHERE vg.verse_group_id = ?
-            ORDER BY v.book, v.chapter, v.verse
+            SELECT book, chapter, verse
+            FROM verse_group_verse
+            WHERE verse_group_id = ?
+            ORDER BY book, chapter, verse
         ''', (verse_group_id,))
         
         verses_in_group = cursor.fetchall()

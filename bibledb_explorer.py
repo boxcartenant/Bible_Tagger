@@ -59,7 +59,13 @@ def combineVRefs(vref1, vref2):
 def bargraph_size(test, testmin, testmax, barmin=0, barmax=100):
     test_adjusted = test - testmin
     testmax_adjusted = testmax - testmin
-    result = (test_adjusted * (barmax - barmin) / testmax_adjusted) + barmin
+    
+    # Handle case where all values are the same (avoid division by zero)
+    if testmax_adjusted == 0:
+        result = barmin  # or could use (barmin + barmax) / 2 for middle value
+    else:
+        result = (test_adjusted * (barmax - barmin) / testmax_adjusted) + barmin
+    
     if result < 3:
         result = 3
     return result

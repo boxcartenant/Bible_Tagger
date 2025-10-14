@@ -142,7 +142,7 @@ class BibleTaggerApp:
             else:
                 print("I'm not opening that. It's gotta be a SQLITE database file with the extension \".bdb\"")
 
-    def new_db(self, event):
+    def new_db(self):
         global open_db_file
 
         file_path = filedialog.asksaveasfilename(defaultextension=".bdb", filetypes=[("Sqlite Bible Files", "*.bdb"), ("All files", "*.*")])
@@ -153,7 +153,7 @@ class BibleTaggerApp:
                 bibledb_lib.makeDB(file_path)
             self.load_bdb(file_path)
     
-    def save_db_as(self, event):
+    def save_db_as(self):
         global open_db_file
 
         file_path = filedialog.asksaveasfilename(defaultextension=".bdb", filetypes=[("Sqlite Bible Files", "*.bdb"), ("All files", "*.*")])
@@ -168,7 +168,7 @@ class BibleTaggerApp:
             self.load_bdb(file_path)
             print(f"Database saved as: {file_path}")
     
-    def merge_dbs(self, event):
+    def merge_dbs(self):
         # merges a second database into current database
         file_path = filedialog.askopenfilename(defaultextension=".bdb", filetypes=[("Sqlite Bible Files", "*.bdb"), ("All files", "*.*")])
         if file_path:
