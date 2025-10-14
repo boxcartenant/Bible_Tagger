@@ -429,6 +429,12 @@ class DBExplorer:
         else:
             dbstuff = self.dbdata
 
+        # Display currently loaded database at the top
+        if self.dbdata:
+            db_name = os.path.basename(self.dbdata) if self.dbdata else "None"
+            self.canvas.create_text(x_offset, y_offset, text=f"Database: {db_name}", anchor=tk.W, fill="navy", font=self.boldFont)
+            y_offset += boldlineheight + textlinegap * 3
+
         if self.dbdata is None:
             self.canvas.create_text(10, 30, text="Select a verse to load a DB.", fill="green", font = self.canvasFont)
         else:

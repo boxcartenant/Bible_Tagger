@@ -49,7 +49,6 @@ I programmed this around the output of SWORD-to-JSON. Here's the link to that: h
 - Replace tag view back button with a universal back and forward button
     - Remembers previous tags and verses
 - Remove the "tag a group name or bar to view its verses" diolog and add to window
-- show currently loaded db in db explorer
 
 # Getting Started
 
