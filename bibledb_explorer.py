@@ -403,240 +403,214 @@ class DBExplorer:
 
 
     def display_attributes(self, dbstuff = None):
-        self.show_loading_overlay("Loading…")
-        #shows all the tags
-        x_offset = 5
-        y_offset = 3
-        textelbowroom = 10
-        textlinegap = 2
-        textlineheight = Font.metrics(self.canvasFont)["linespace"]
-        boldlineheight = Font.metrics(self.boldFont)["linespace"]
-        italiclineheight = Font.metrics(self.italicFont)["linespace"]
-        right_x_offset = 30
-        panelWidth = self.this_window.sashpos(0) - right_x_offset
+            self.show_loading_overlay("Loading…")
+            #shows all the tags
+            x_offset = 5
+            y_offset = 3
+            textelbowroom = 10
+            textlinegap = 2
+            textlineheight = Font.metrics(self.canvasFont)["linespace"]
+            boldlineheight = Font.metrics(self.boldFont)["linespace"]
+            italiclineheight = Font.metrics(self.italicFont)["linespace"]
+            right_x_offset = 30
+            panelWidth = self.this_window.sashpos(0) - right_x_offset
 
-        #Clear the canvas
-        self.canvas.delete("all")
-        
-        if dbstuff != None:
-            self.dbdata = dbstuff
-        else:
-            dbstuff = self.dbdata
+            #Clear the canvas
+            self.canvas.delete("all")
+            
+            if dbstuff != None:
+                self.dbdata = dbstuff
+            else:
+                dbstuff = self.dbdata
 
-        if self.dbdata is None:
-            self.canvas.create_text(10, 30, text="Select a verse to load a DB.", fill="green", font = self.canvasFont)
-        else:
-            #get all the tags
-            checklist = [b['tag'] for b in bdblib.get_tag_list(self.dbdata)] #all the tags
-            
-            syngroups = []   #each indice is a list of synonymous tags
-            synonymlist = [] #a group of synonymous tags to be added to syngroups
-            checkedlist = [] #tags we've already dealt with. So we don't deal with them again.
-            synonyms = []    #a working list of tags we're in the middle of finding synonyms for
-            
-            for tag in checklist:
-                if tag not in checkedlist:
-                    checkedlist.append(tag)
-                    synonymlist.append(tag)
-                    synonyms = [b['tag'] for b in bdblib.get_db_stuff(self.dbdata,"tag","tag",tag)]
-                    while len(synonyms) > 0:
-                        synonym = synonyms.pop()
-                        if synonym not in checkedlist:
-                            checkedlist.append(synonym)
-                            synonymlist.append(synonym)
-                            synonyms += [b['tag'] for b in bdblib.get_db_stuff(self.dbdata,"tag","tag",synonym)]
-                    
-                  #  #OLD Recursive way of getting syngroups
-                  #  def recursivesynonyms(syno, thisgroup):
-                  #      synonyms = [b['tag'] for b in bdblib.get_db_stuff(self.dbdata,"tag","tag",syno)]
-                  #      for tag in synonyms:
-                  #          if tag not in thisgroup:
-                  #              thisgroup.append(tag)
-                  #              thisgroup = recursivesynonyms(tag, thisgroup)
-                  #      return thisgroup
-                  #  
-                  #  synonymlist = recursivesynonyms(tag, [tag])
-                  #  
-                  #  for s in synonymlist:
-                  #      if s != tag:
-                  #          checkedlist.append(s)
-                  #      
-                    syngroups.append({"tags":synonymlist})
-                    synonymlist = []
+            if self.dbdata is None:
+                self.canvas.create_text(10, 30, text="Select a verse to load a DB.", fill="green", font = self.canvasFont)
+            else:
+                import sqlite3
+                from collections import defaultdict, deque
+                
+                tag_rows = bdblib.get_tag_list(self.dbdata)
+                tag_to_id = {row[1]: row[0] for row in tag_rows}
+                id_to_tag = {row[0]: row[1] for row in tag_rows}
+                checklist = [row[1] for row in tag_rows]
+                
+                # Fetch all synonym pairs and build adjacency list (undirected graph)
+                syn_pairs = bdblib.get_synonym_pairs(self.dbdata)
+                adj = defaultdict(list)
+                for t1_id, t2_id in syn_pairs:
+                    t1 = id_to_tag[t1_id]
+                    t2 = id_to_tag[t2_id]
+                    if t2 not in adj[t1]:
+                        adj[t1].append(t2)
+                    if t1 not in adj[t2]:
+                        adj[t2].append(t1)
+                
+                # Find connected components (synonym groups) using BFS
+                syngroups = []
+                checked = set()
+                for tag in checklist:
+                    if tag not in checked:
+                        synonymlist = []
+                        queue = deque([tag])
+                        checked.add(tag)
+                        while queue:
+                            current = queue.popleft()
+                            synonymlist.append(current)
+                            for neighbor in adj[current]:
+                                if neighbor not in checked:
+                                    checked.add(neighbor)
+                                    queue.append(neighbor)
+                        # Sort tags in group for consistent display
+                        syngroups.append({"tags": sorted(synonymlist)})
+                
+                # Fetch all tag-verse associations in one query
+                assoc_rows = bdblib.get_all_tag_verse(self.dbdata)
+                
+                # Build verses_by_tag: tag -> set of verse_ids
+                verses_by_tag = defaultdict(set)
+                for tag, verse_id in assoc_rows:
+                    verses_by_tag[tag].add(verse_id)
+                
+                # Compute unique verse counts for each synonym group (union of sets)
+                syngroups_lo = 9223372036854775807
+                syngroups_hi = 0
+                for i in range(len(syngroups)):
+                    unique_verses = set()
+                    for tag in syngroups[i]["tags"]:
+                        unique_verses |= verses_by_tag[tag]
+                    count = len(unique_verses)
+                    syngroups[i]["verses"] = count
+                    if count < syngroups_lo:
+                        syngroups_lo = count
+                    if count > syngroups_hi:
+                        syngroups_hi = count
+                
+                # Optionally compute per-tag verse counts (if needed for future use; currently unused in display)
+                # tags_lo = min(len(verses_by_tag[tag]) for tag in checklist) if checklist else 0
+                # tags_hi = max(len(verses_by_tag[tag]) for tag in checklist) if checklist else 0
+                
+                #show some statistics at the top
+                #  qty of tags
+                showtext = "total tag count: " +str(len(checklist))
+                self.canvas.create_text(x_offset+textelbowroom, y_offset+textelbowroom, text=showtext, anchor=tk.NW, font=self.canvasFont)
+                y_offset += textlineheight + textlinegap
+                #  qty of synonym groups
+                showtext = "tag count after grouping synonyms: " +str(len(syngroups))
+                self.canvas.create_text(x_offset+textelbowroom, y_offset+textelbowroom, text=showtext, anchor=tk.NW, font=self.canvasFont)
+                y_offset += textelbowroom + textlineheight + textlinegap
+                
+                #show sorting buttons
+                buttonText = self.sortmode_text #"Toggle Sorting"
+                sort_button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
+                self.canvas.create_rectangle(x_offset, y_offset, x_offset+sort_button_width,y_offset + textlineheight + 2*textelbowroom, fill='snow', tags='on_sortmode_click')
+                self.canvas.create_text(x_offset+textelbowroom, y_offset+textelbowroom, text=buttonText, anchor=tk.NW, font=self.canvasFont, tags='on_sortmode_click')
+                self.canvas.tag_bind('on_sortmode_click', '<Button-1>', self.on_sortmode_click)
+
                 
 
-            syngroups_lo = 9223372036854775807
-            syngroups_hi = 0
-            #count the unique verses for the synonym group
-            #these low and high values are used to scale bargraph lengths and colors
-            verses = []
-            for i in range(len(syngroups)):
-                for tag in syngroups[i]["tags"]:
-                    checkverses = bdblib.get_db_stuff(self.dbdata, "verse", "tag", tag)
-                    for verse in checkverses:
-                        if verse not in verses:
-                            verses.append(verse)
-                syngroups[i]["verses"] = len(verses)
-                if syngroups[i]["verses"] < syngroups_lo:
-                    syngroups_lo = syngroups[i]["verses"]
-                if syngroups[i]["verses"] > syngroups_hi:
-                    syngroups_hi = syngroups[i]["verses"]
-                verses = []
-                                
+                buttonText = self.colormode_text #"Toggle Coloring"
+                color_button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
+                color_x_offset = x_offset
+                if x_offset + sort_button_width + textelbowroom*2 + color_button_width < panelWidth:
+                    color_x_offset += sort_button_width + textelbowroom*2
+                else:
+                    y_offset += 10 + textlineheight + 2*textelbowroom
+                self.canvas.create_rectangle(color_x_offset, y_offset, color_x_offset+color_button_width,y_offset + textlineheight + 2*textelbowroom, fill='snow', tags='on_colormode_click')
+                self.canvas.create_text(color_x_offset+textelbowroom, y_offset+textelbowroom, text=buttonText, anchor=tk.NW, font=self.canvasFont, tags='on_colormode_click')
+                self.canvas.tag_bind('on_colormode_click', '<Button-1>', self.on_colormode_click)
 
-            tags_lo = 9223372036854775807
-            tags_hi = 0
-            tags = [{"tag":b} for b in checklist]
-            #count the verses for each tag
-            for i in range(len(tags)):
-                tags[i]["verses"] = len(bdblib.get_db_stuff(self.dbdata, "verse", "tag", tags[i]["tag"]))
-                if tags[i]["verses"] < tags_lo:
-                    tags_lo = tags[i]["verses"]
-                if tags[i]["verses"] > tags_hi:
-                    tags_hi = tags[i]["verses"]
-            
-            #show some statistics at the top
-            #  qty of tags
-            showtext = "total tag count: " +str(len(tags))
-            self.canvas.create_text(x_offset+textelbowroom, y_offset+textelbowroom, text=showtext, anchor=tk.NW, font=self.canvasFont)
-            y_offset += textlineheight + textlinegap
-            #  qty of synonym groups
-            showtext = "tag count after grouping synonyms: " +str(len(syngroups))
-            self.canvas.create_text(x_offset+textelbowroom, y_offset+textelbowroom, text=showtext, anchor=tk.NW, font=self.canvasFont)
-            y_offset += textelbowroom + textlineheight + textlinegap
-            
-            #show sorting buttons
-            buttonText = self.sortmode_text #"Toggle Sorting"
-            sort_button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
-            self.canvas.create_rectangle(x_offset, y_offset, x_offset+sort_button_width,y_offset + textlineheight + 2*textelbowroom, fill='snow', tags='on_sortmode_click')
-            self.canvas.create_text(x_offset+textelbowroom, y_offset+textelbowroom, text=buttonText, anchor=tk.NW, font=self.canvasFont, tags='on_sortmode_click')
-            self.canvas.tag_bind('on_sortmode_click', '<Button-1>', self.on_sortmode_click)
+                buttonText = "Export List"
+                export_button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
+                export_x_offset = color_x_offset
+                if export_x_offset + textelbowroom*2 + color_button_width + export_button_width < panelWidth:
+                    export_x_offset += color_button_width + textelbowroom*2
+                else:
+                    export_x_offset = x_offset
+                    y_offset += 10 + textlineheight + 2*textelbowroom
+                self.canvas.create_rectangle(export_x_offset, y_offset, export_x_offset+export_button_width,y_offset + textlineheight + 2*textelbowroom, fill='snow', tags='on_exporttags_click')
+                self.canvas.create_text(export_x_offset+textelbowroom, y_offset+textelbowroom, text=buttonText, anchor=tk.NW, font=self.canvasFont, tags='on_exporttags_click')
+                self.canvas.tag_bind('on_exporttags_click', '<Button-1>', self.on_exporttags_click)
 
-            
-
-            buttonText = self.colormode_text #"Toggle Coloring"
-            color_button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
-            color_x_offset = x_offset
-            if x_offset + sort_button_width + textelbowroom*2 + color_button_width < panelWidth:
-                color_x_offset += sort_button_width + textelbowroom*2
-            else:
                 y_offset += 10 + textlineheight + 2*textelbowroom
-            self.canvas.create_rectangle(color_x_offset, y_offset, color_x_offset+color_button_width,y_offset + textlineheight + 2*textelbowroom, fill='snow', tags='on_colormode_click')
-            self.canvas.create_text(color_x_offset+textelbowroom, y_offset+textelbowroom, text=buttonText, anchor=tk.NW, font=self.canvasFont, tags='on_colormode_click')
-            self.canvas.tag_bind('on_colormode_click', '<Button-1>', self.on_colormode_click)
-
-            buttonText = "Export List"
-            export_button_width = self.canvasFont.measure(buttonText) + 2*textelbowroom
-            export_x_offset = color_x_offset
-            if export_x_offset + textelbowroom*2 + color_button_width + export_button_width < panelWidth:
-                export_x_offset += color_button_width + textelbowroom*2
-            else:
-                export_x_offset = x_offset
-                y_offset += 10 + textlineheight + 2*textelbowroom
-            self.canvas.create_rectangle(export_x_offset, y_offset, export_x_offset+export_button_width,y_offset + textlineheight + 2*textelbowroom, fill='snow', tags='on_exporttags_click')
-            self.canvas.create_text(export_x_offset+textelbowroom, y_offset+textelbowroom, text=buttonText, anchor=tk.NW, font=self.canvasFont, tags='on_exporttags_click')
-            self.canvas.tag_bind('on_exporttags_click', '<Button-1>', self.on_exporttags_click)
-
-            y_offset += 10 + textlineheight + 2*textelbowroom
-            
-            #now we have...
-            # tags -- ["tagname","tagname1","tagname2",...]
-            # tagverses -- [versecount, versecount1, versecount2,...]
-            # syngroups -- [{"tags":["tagname","tagname1","tagname2",...],"verses":integer_verse_count},...]
-            
-            # tags_hi -- the qty of references to the most used tag
-            # tags_lo -- the qty of references to the least used tag
-            # syngroups_hi -- the qty of references to the most used syngroup
-            # syngroups_lo -- the qty of references to the least used syngroup
-            #... the ranges for tags might be inaccurate in view of syngroups where another synonym has the references
-
-            #self.sortmode_text = "sorting"#the button text
-            #self.sortmode = "alphabet" #toggles between "alphabet" and "usage"
-            #self.colormode_text = "color" #the button text
-            #self.colormode = "plain" #toggles: "plain", "redblue", "purpleyellow"
-
-            #prepare the workbook
-            workbook = None
-            sheet = None
-            if self.export_tags_this_time:
-                workbook = Workbook()
-                sheet = workbook.active
-                wbheader = ["Verse Count", "Tags..."]
-                sheet.append(wbheader)
                 
-            if self.sortmode == "alphabet":
-                sorted_tags = sorted(tags, key=lambda x: x["tag"])
-                sorted_syngroups = [(syngroups.index(lst), lst["tags"].index(dct["tag"])) for dct in sorted_tags for lst in syngroups if dct["tag"] in lst["tags"]]
-            elif self.sortmode == "usage":
-                #We are only using syngroups for display, so no need to sort tags here.
-                #sorted_tags = sorted(tags, key=lambda x: x["verses"], reverse = True) #reverse to put the most-used tags on top
-                sorted_syngroups = sorted(syngroups, key=lambda x: x["verses"], reverse = True)
-            tagnum = 0
-            self.all_tags_list = [s["tags"] for s in sorted(syngroups, key=lambda x: x["verses"], reverse = True)]# this variable is used by right_hand_frame to export tag/note/verses 
-            for s in sorted_syngroups:
-                #print(s)
+                # Prepare sorted_syngroups based on sort mode
                 if self.sortmode == "alphabet":
-                    #in this case, s is a list of tuples, representing the index of the tag in syngroups.
-                    tags = [syngroups[s[0]]["tags"][s[1]]]
-                    verses = syngroups[s[0]]["verses"]
+                    tags_list = [{"tag": t} for t in checklist]
+                    sorted_tags = sorted(tags_list, key=lambda x: x["tag"])
+                    sorted_syngroups = []
+                    for dct in sorted_tags:
+                        for idx, lst in enumerate(syngroups):
+                            if dct["tag"] in lst["tags"]:
+                                tag_idx = lst["tags"].index(dct["tag"])
+                                sorted_syngroups.append((idx, tag_idx))
+                                break
                 elif self.sortmode == "usage":
-                    #in this case, s is a dict, like {'tags': ['beard', 'hair', 'beards'], 'verses': 4}
-                    tags = s["tags"]
-                    verses = s["verses"]
-                if self.export_tags_this_time:
-                    sheet.append([verses]+tags)
-
-                barcolor = color_gradient(verses, syngroups_lo, syngroups_hi, self.colormode)
-                barlength = bargraph_size(verses, syngroups_lo, syngroups_hi, x_offset, panelWidth)
+                    sorted_syngroups = sorted(syngroups, key=lambda x: x["verses"], reverse=True)
                 
-                
-                #use the width of the window to determine how many times this tag list will wrap
-                #   use that width to determine the needed height for this bar-graph rectangle
+                tagnum = 0
+                self.all_tags_list = [s["tags"] for s in sorted(syngroups, key=lambda x: x["verses"], reverse = True)]# this variable is used by right_hand_frame to export tag/note/verses 
+                for s in sorted_syngroups:
+                    if self.sortmode == "alphabet":
+                        group_idx, tag_idx = s
+                        tags = [syngroups[group_idx]["tags"][tag_idx]]
+                        verses = syngroups[group_idx]["verses"]
+                    elif self.sortmode == "usage":
+                        tags = s["tags"]
+                        verses = s["verses"]
+                    if self.export_tags_this_time:
+                        sheet.append([verses]+tags)
 
-                linesize = textelbowroom
-                barheight = textlineheight + textlinegap*2
-                rendertags = [] #this will store, in rows, all the tags to be displayed on this bar
-                tagline = []
-                #first calculate the total height of this block of tags, for the bar graph bar height
-                for tag in tags:
-                    tagwidth = self.canvasFont.measure(tag)
-                    if tagwidth + linesize + textelbowroom < panelWidth:
-                        tagline.append(tag)
-                        linesize += tagwidth + textelbowroom
-                    else:
-                        rendertags.append(tagline)
-                        tagline = [tag]
-                        barheight += textlineheight + textlinegap
-                        linesize = tagwidth+textelbowroom
-                if tagline != []:
-                    rendertags.append(tagline)
+                    barcolor = color_gradient(verses, syngroups_lo, syngroups_hi, self.colormode)
+                    barlength = bargraph_size(verses, syngroups_lo, syngroups_hi, x_offset, panelWidth)
+                    
+                    
+                    #use the width of the window to determine how many times this tag list will wrap
+                    #   use that width to determine the needed height for this bar-graph rectangle
 
-                #render the bar, and then iterate through the tags and display them
-                tag_binder = "GOTO_tag_"+str(tagnum) #the bar binds to the first tag in the group
-                self.canvas.create_rectangle(x_offset, y_offset, x_offset+barlength, y_offset+barheight, fill=barcolor, tags=tag_binder)
-                y_offset += textlinegap
-                for tagline in rendertags:
-                    tagx = textelbowroom
-                    for i, tag in enumerate(tagline):
-                        tag_binder = "GOTO_tag_"+str(tagnum)
-                        self.canvas.create_text(x_offset+tagx, y_offset, text=tag, anchor=tk.NW, font=self.canvasFont, tags=tag_binder)
-                        self.canvas.tag_bind(tag_binder, '<Button-1>', lambda event, item_id = tag : self.on_tag_click(event,item_id))
-                        tagnum += 1
+                    linesize = textelbowroom
+                    barheight = textlineheight + textlinegap*2
+                    rendertags = [] #this will store, in rows, all the tags to be displayed on this bar
+                    tagline = []
+                    #first calculate the total height of this block of tags, for the bar graph bar height
+                    for tag in tags:
                         tagwidth = self.canvasFont.measure(tag)
-                        tagx += tagwidth + textelbowroom
-                        if i < len(tagline)-1:
-                            self.canvas.create_line(tagx, y_offset-(textlinegap/2), tagx, y_offset+textlineheight+(textlinegap/2)+2, fill='black', width=2)
-                            #the +2 in the second y coord above was just an asthetic tweak, and can be removed if you don't like it.
-                            tagx += 2
-                    y_offset += textlineheight + textlinegap
-                y_offset += 10
-        if self.export_tags_this_time:
-            self.export_tags_this_time = False
-            workbook.save(self.export_tags_path)
-            print("Exported tags to: " + str(self.export_tags_path))
-            self.export_tags_path = None
-        self.hide_loading_overlay()
-        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+                        if tagwidth + linesize + textelbowroom < panelWidth:
+                            tagline.append(tag)
+                            linesize += tagwidth + textelbowroom
+                        else:
+                            rendertags.append(tagline)
+                            tagline = [tag]
+                            barheight += textlineheight + textlinegap
+                            linesize = tagwidth+textelbowroom
+                    if tagline != []:
+                        rendertags.append(tagline)
+
+                    #render the bar, and then iterate through the tags and display them
+                    tag_binder = "GOTO_tag_"+str(tagnum) #the bar binds to the first tag in the group
+                    self.canvas.create_rectangle(x_offset, y_offset, x_offset+barlength, y_offset+barheight, fill=barcolor, tags=tag_binder)
+                    y_offset += textlinegap
+                    for tagline in rendertags:
+                        tagx = textelbowroom
+                        for i, tag in enumerate(tagline):
+                            tag_binder = "GOTO_tag_"+str(tagnum)
+                            self.canvas.create_text(x_offset+tagx, y_offset, text=tag, anchor=tk.NW, font=self.canvasFont, tags=tag_binder)
+                            self.canvas.tag_bind(tag_binder, '<Button-1>', lambda event, item_id = tag : self.on_tag_click(event,item_id))
+                            tagnum += 1
+                            tagwidth = self.canvasFont.measure(tag)
+                            tagx += tagwidth + textelbowroom
+                            if i < len(tagline)-1:
+                                self.canvas.create_line(tagx, y_offset-(textlinegap/2), tagx, y_offset+textlineheight+(textlinegap/2)+2, fill='black', width=2)
+                                #the +2 in the second y coord above was just an asthetic tweak, and can be removed if you don't like it.
+                                tagx += 2
+                        y_offset += textlineheight + textlinegap
+                    y_offset += 10
+            if self.export_tags_this_time:
+                self.export_tags_this_time = False
+                workbook.save(self.export_tags_path)
+                print("Exported tags to: " + str(self.export_tags_path))
+                self.export_tags_path = None
+            self.hide_loading_overlay()
+            self.canvas.configure(scrollregion=self.canvas.bbox("all"))
         
 
 ###########################################Right Hand Frame is the verse sorting area. Probably not a useful name for it, now that I think about it.
@@ -1246,7 +1220,7 @@ class VerseSortingPanel(ttk.Frame):
 
         # Build tag→verse mapping
         tag_to_verses = defaultdict(set)
-        all_tags = [r['tag'] for r in bdblib.get_tag_list(self.dbdata)]
+        all_tags = [r[1] for r in bdblib.get_tag_list(self.dbdata)]
         all_tags = sorted(set(all_tags))
         for t in all_tags:
             verses = bdblib.get_db_stuff(self.dbdata, "verse", "tag", t)
