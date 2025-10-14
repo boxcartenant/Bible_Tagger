@@ -39,12 +39,12 @@ def wrapText(text, width, font):
 
 
 class BibleTaggerApp:
-    def __init__(self, master):
+    def __init__(self, master, cli_args):
         self.master = master
         global bible_data, cfg
 
-        jsonpath = cfg.get('DEFAULT', 'json_path', fallback=None)
-        bdbpath = cfg.get('DEFAULT', 'bdb_path', fallback=None)
+        jsonpath = cli_args.json_path if cli_args.json_path else cfg.get('DEFAULT', 'json_path', fallback=None)
+        bdbpath = cli_args.db_path    if cli_args.db_path   else cfg.get('DEFAULT', 'bdb_path',  fallback=None)
         initial_window_size = cfg.get('INTERNAL', 'window_size', fallback="1000x600")
 
         self.master.geometry(initial_window_size)
@@ -1311,6 +1311,10 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Bible Tagger")
 
+    # Add optional arguments for the main GUI mode
+    parser.add_argument("--db", dest="db_path", help="Path to database file (overrides config)")
+    parser.add_argument("--json", dest="json_path", help="Path to Bible JSON file (overrides config)")
+
     subparsers = parser.add_subparsers(dest="command", required=False)
 
     # migrate
@@ -1489,7 +1493,7 @@ if __name__ == "__main__":
         root.title("Bible Tagger")
         root.iconbitmap("./bibletaggericon.ico")
 
-        bta = BibleTaggerApp(root)
+        bta = BibleTaggerApp(root, args)
 
         root.mainloop()
     elif args.command == "migrate":
