@@ -1274,10 +1274,14 @@ class TaggerPanel:
             SquareTop = y_offset
             y_offset += textlinegap
             noteTextHeight = 0
-            #Check the DB to find out if there are notes for the selected verse
-            # Get notes for verse groups that EXACTLY match the current reference
-            if type_to_get:
+            #Check the DB to find out if there are notes for the selected verse or tag
+            if type_to_get == "verse":
+                # Get notes for verse groups that EXACTLY match the current reference
                 self.note_area_text = bibledb_lib.get_note(open_db_file, self.current_data["ref"], bible_data)
+            elif type_to_get == "tag":
+                # Get note for this specific tag
+                note_result = bibledb_lib.get_db_stuff(open_db_file, "note", "tag", self.current_data["ref"])
+                self.note_area_text = note_result[0]['note'] if note_result and len(note_result) > 0 else None
             else:
                 self.note_area_text = None
 
