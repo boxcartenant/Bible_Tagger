@@ -948,6 +948,37 @@ class ScripturePanel:
         if self.tooltip_window:
             self.tooltip_window.destroy()
             self.tooltip_window = None
+    
+    def on_xref_click(self, ref_string):
+        """Handle clicking on a cross-reference to navigate to that verse"""
+        # ref_string is like "John 3:16" or "John 3:16-18"
+        # Parse it and navigate using options_callback
+        try:
+            # Split into parts
+            parts = ref_string.rsplit(' ', 1)  # Split from right to get "Book Name" and "chapter:verse"
+            book_name = parts[0]
+            chapter_verse = parts[1]
+            
+            # Handle range or single verse
+            if '-' in chapter_verse:
+                # Range like "3:16-18"
+                start_part = chapter_verse.split('-')[0]
+                end_verse = chapter_verse.split('-')[1]
+                chapter = start_part.split(':')[0]
+                start_verse = start_part.split(':')[1]
+                
+                start_ref = f"{book_name} {chapter}:{start_verse}"
+                end_ref = f"{book_name} {chapter}:{end_verse}"
+            else:
+                # Single verse like "3:16"
+                start_ref = ref_string
+                end_ref = ref_string
+            
+            # Use options_callback to navigate to the verse
+            self.bta.options_callback((start_ref, end_ref), True)
+            
+        except Exception as e:
+            print(f"Error navigating to cross-reference: {e}")
         
     def on_text_click(self, event, item_id, scopename, vv):
         #item_id is the text of the selected verse
@@ -1250,12 +1281,6 @@ class ScripturePanel:
                         y_offset += textlinegap * 2
                     
                     for verse_num, refs in cross_refs:
-                        # Format cross-references
-                        ref_strings = []
-                        for ref in refs:
-                            ref_str = f"{ref['book']} {ref['chapter']}:{ref['verse']}"
-                            ref_strings.append(ref_str)
-                        
                         # Display verse number in regular font
                         verse_label = f"[{verse_num}]"
                         self.canvas.create_text(x_offset, y_offset, text=verse_label, anchor=tk.NW,
@@ -1264,19 +1289,81 @@ class ScripturePanel:
                         # Calculate offset for xref text after verse number
                         label_width = self.canvasFont.measure(verse_label) + textelbowroom
                         
-                        # Wrap and display cross-reference text in italic
-                        xref_text = f"See also: {', '.join(ref_strings)}"
-                        first_line = True
-                        for line in wrapText(xref_text, verse_area_width - x_offset - label_width, self.canvasFont):
-                            if first_line:
-                                self.canvas.create_text(x_offset + label_width, y_offset, text=line, anchor=tk.NW,
-                                                       fill="darkgreen", font=self.italicFont)
-                                first_line = False
+                        # Display "See also:" prefix in italic
+                        see_also_text = "See also: "
+                        text_obj = self.canvas.create_text(x_offset + label_width, y_offset, text=see_also_text, anchor=tk.NW,
+                                                           fill="darkgreen", font=self.italicFont)
+                        current_x = x_offset + label_width + self.italicFont.measure(see_also_text)
+                        
+                        # Group consecutive references by book and chapter
+                        grouped_refs = []
+                        i = 0
+                        while i < len(refs):
+                            ref = refs[i]
+                            book = ref['book']
+                            chapter = ref['chapter']
+                            verses = [ref['verse']]
+                            
+                            # Look ahead for consecutive verses in same book/chapter
+                            j = i + 1
+                            while j < len(refs):
+                                next_ref = refs[j]
+                                if next_ref['book'] == book and next_ref['chapter'] == chapter:
+                                    # Check if verse is consecutive
+                                    try:
+                                        if int(next_ref['verse']) == int(verses[-1]) + 1:
+                                            verses.append(next_ref['verse'])
+                                            j += 1
+                                        else:
+                                            break
+                                    except:
+                                        break
+                                else:
+                                    break
+                            
+                            # Format the grouped reference
+                            if len(verses) == 1:
+                                grouped_refs.append({
+                                    'text': f"{book} {chapter}:{verses[0]}",
+                                    'ref': f"{book} {chapter}:{verses[0]}"
+                                })
                             else:
-                                self.canvas.create_text(x_offset + label_width, y_offset, text=line, anchor=tk.NW,
-                                                       fill="darkgreen", font=self.italicFont)
-                            y_offset += textlineheight + textlinegap
-                        y_offset += textlinegap  # Extra space between cross-references
+                                grouped_refs.append({
+                                    'text': f"{book} {chapter}:{verses[0]}-{verses[-1]}",
+                                    'ref': f"{book} {chapter}:{verses[0]}-{verses[-1]}"
+                                })
+                            
+                            i = j
+                        
+                        # Display each reference as a clickable link
+                        for idx, ref_data in enumerate(grouped_refs):
+                            # Add comma separator if not first
+                            if idx > 0:
+                                comma_obj = self.canvas.create_text(current_x, y_offset, text=", ", anchor=tk.NW,
+                                                                   fill="darkgreen", font=self.italicFont)
+                                current_x += self.italicFont.measure(", ")
+                            
+                            # Check if we need to wrap to next line
+                            ref_width = self.italicFont.measure(ref_data['text'])
+                            if current_x + ref_width > verse_area_width:
+                                y_offset += textlineheight + textlinegap
+                                current_x = x_offset + label_width
+                            
+                            # Create clickable reference text
+                            ref_obj = self.canvas.create_text(current_x, y_offset, text=ref_data['text'], anchor=tk.NW,
+                                                             fill="blue", font=self.italicFont, tags="xref_link")
+                            
+                            # Make it clickable
+                            self.canvas.tag_bind(ref_obj, '<Button-1>', 
+                                               lambda event, ref=ref_data['ref']: self.on_xref_click(ref))
+                            self.canvas.tag_bind(ref_obj, '<Enter>', 
+                                               lambda event, obj=ref_obj: self.canvas.itemconfig(obj, font=self.italicunderlineFont))
+                            self.canvas.tag_bind(ref_obj, '<Leave>', 
+                                               lambda event, obj=ref_obj: self.canvas.itemconfig(obj, font=self.italicFont))
+                            
+                            current_x += ref_width
+                        
+                        y_offset += textlineheight + textlinegap * 2  # Extra space between cross-references
                         
         #print(item_hierarchy)
         #print(data)
