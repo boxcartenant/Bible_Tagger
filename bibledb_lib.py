@@ -536,6 +536,91 @@ def tagNoteEntry(tag_name, note_data):
 # so verses are accessed like this:
 # bibleData['Psalm'][19][7]
 
+def validate_bible_schema(data):
+    """
+    Validate that the Bible JSON has the expected schema.
+    
+    Expected structure:
+    {
+      "books": [
+        {
+          "book": "Genesis",
+          "names": ["Genesis", "Gen"],
+          "chapters": [
+            {
+              "chapter": 1,
+              "verses": [
+                {
+                  "verse": 1,
+                  "text": "...",
+                  "footnote": "..." (optional),
+                  "cross_references": {...} (optional)
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+    
+    Returns: (is_valid, error_message)
+    """
+    try:
+        # Check top level structure
+        if not isinstance(data, dict):
+            return False, "JSON root must be an object"
+        
+        if "books" not in data:
+            return False, "Missing required field 'books'"
+        
+        if not isinstance(data["books"], list) or len(data["books"]) == 0:
+            return False, "'books' must be a non-empty array"
+        
+        # Validate first book structure (sample validation)
+        book = data["books"][0]
+        
+        if not isinstance(book, dict):
+            return False, "Book entries must be objects"
+        
+        if "book" not in book:
+            return False, "Books must have a 'book' field with the book name"
+        
+        if "chapters" not in book:
+            return False, "Books must have a 'chapters' field"
+        
+        if not isinstance(book["chapters"], list) or len(book["chapters"]) == 0:
+            return False, "'chapters' must be a non-empty array"
+        
+        # Validate first chapter structure
+        chapter = book["chapters"][0]
+        
+        if not isinstance(chapter, dict):
+            return False, "Chapter entries must be objects"
+        
+        if "verses" not in chapter:
+            return False, "Chapters must have a 'verses' field"
+        
+        if not isinstance(chapter["verses"], list) or len(chapter["verses"]) == 0:
+            return False, "'verses' must be a non-empty array"
+        
+        # Validate first verse structure
+        verse = chapter["verses"][0]
+        
+        if not isinstance(verse, dict):
+            return False, "Verse entries must be objects"
+        
+        if "verse" not in verse:
+            return False, "Verses must have a 'verse' field with the verse number"
+        
+        if "text" not in verse:
+            return False, "Verses must have a 'text' field with the verse content"
+        
+        return True, None
+        
+    except Exception as e:
+        return False, f"Schema validation error: {str(e)}"
+
+
 def parseBibleData(data):
     """
     Store Bible JSON data as-is with minimal processing.
@@ -545,6 +630,11 @@ def parseBibleData(data):
     bibleData: dict - {book_name: [chapters_array]}
         Each book contains the chapters array directly from JSON
     """
+    # Validate schema first
+    is_valid, error_msg = validate_bible_schema(data)
+    if not is_valid:
+        raise ValueError(f"Invalid Bible JSON schema: {error_msg}")
+    
     bibleData = {}
     
     # Iterate over books

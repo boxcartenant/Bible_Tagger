@@ -760,12 +760,35 @@ class NavigationTree:
 
     def load_json(self, bible_file_path):
         global bible_data, cfg, config_filename, current_bible_json
-        current_bible_json = bible_file_path
-        with open(bible_file_path, 'r', encoding='utf-8') as file:
-            bible_file_content = file.read()
-            bible_data = bibledb_lib.getBibleData(bible_file_content)
-        #print("dumping output from open_file_dialog")
-        #print(bible_data)
+        
+        try:
+            current_bible_json = bible_file_path
+            with open(bible_file_path, 'r', encoding='utf-8') as file:
+                bible_file_content = file.read()
+                bible_data = bibledb_lib.getBibleData(bible_file_content)
+            #print("dumping output from open_file_dialog")
+            #print(bible_data)
+        except ValueError as e:
+            # Invalid schema error
+            current_bible_json = None
+            messagebox.showerror(
+                "Invalid Bible JSON Format",
+                f"The selected Bible JSON file has an invalid format:\n\n{str(e)}\n\n"
+                "Please open the DB Manager and load a valid Bible JSON file, "
+                "or use the download feature to download a new one.\n\n",
+                parent=self.bta.master
+            )
+            return
+        except Exception as e:
+            # Other errors (file not found, JSON parse error, etc.)
+            current_bible_json = None
+            messagebox.showerror(
+                "Error Loading Bible",
+                f"Failed to load Bible JSON file:\n\n{str(e)}\n\n"
+                "Please open the DB Manager and select a valid Bible JSON file.",
+                parent=self.bta.master
+            )
+            return
         
         # Clear existing tree items before loading new Bible
         for item in self.tree.get_children():

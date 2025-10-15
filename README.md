@@ -54,7 +54,12 @@ I programmed this around the output of SWORD-to-JSON. Here's the link to that: h
 
 ### Setup DB and JSON Files
 
-- Rename the config template (it should be config.cfg)
-- Download a bible, convert it to SWORD format, add that to json_path in the config file.
-    - You can see how to do the SWORD stuff in the `./SWORD-to-JSON for Bible Tagger/How To.txt`
-- Run bible_tagger.py
+1) Rename the config template (it should be config.cfg)
+2) Run bible_tagger.py
+    1) On first run, it will create a DB for you, but it will not load a bible.
+3) Open DB Manager from the button bottom left
+4) Select either Load Bible or Download Bible
+    1) Downloading a bible requires the version name (e.g. ESV)
+    2) This process takes some time, like 10 minutes.
+    3) After scraping is done, resolve any translation discrepancies
+    4) Select Load Bible afterwards, it should be named bible_VER.json, where VER is the version name
