@@ -20,6 +20,7 @@ config_filename = "config.cfg"
 cfg = None
 
 open_db_file = None
+current_bible_json = None
 
 
 def wrapText(text, width, font):
@@ -754,8 +755,9 @@ class NavigationTree:
             pass 
 
     def load_json(self, bible_file_path):
-        global bible_data, cfg, config_filename
-        with open(bible_file_path, 'r') as file:
+        global bible_data, cfg, config_filename, current_bible_json
+        current_bible_json = bible_file_path
+        with open(bible_file_path, 'r', encoding='utf-8') as file:
             bible_file_content = file.read()
             bible_data = bibledb_lib.getBibleData(bible_file_content)
         #print("dumping output from open_file_dialog")
@@ -775,6 +777,10 @@ class NavigationTree:
             cfg['DEFAULT']['json_path'] = bible_file_path
             with open(config_filename, 'w') as configfile:
                 cfg.write(configfile)
+        
+        # Update DB Manager Bible label if it exists and pass the bible path
+        if hasattr(self.bta, 'db_manager'):
+            self.bta.db_manager.update_bible_label(bible_file_path)
     
     def load_bible(self):
         #button to open a Bible file

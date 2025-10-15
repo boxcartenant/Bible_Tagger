@@ -536,13 +536,32 @@ def tagNoteEntry(tag_name, note_data):
 # so verses are accessed like this:
 # bibleData['Psalm'][19][7]
 
-def getBibleData(bible_file_content):
-    # Load JSON data
-    data = json.loads(bible_file_content)
+def detect_bible_schema(data):
+    """
+    Detect which Bible JSON schema is being used.
+    Returns: 'schema1' for original format, 'schema2' for new format, or None if unknown
+    """
+    if "books" not in data:
+        return None
+    
+    if len(data["books"]) == 0:
+        return None
+    
+    first_book = data["books"][0]
+    
+    # Schema 1 has 'name' at book level
+    # Schema 2 has 'book', 'book_sequence', 'testament', 'names' at book level
+    if "name" in first_book and "book" not in first_book:
+        return "schema1"
+    elif "book" in first_book and "book_sequence" in first_book and "testament" in first_book:
+        return "schema2"
+    else:
+        return None
 
-    # Initialize the result dictionary
+
+def parse_schema1(data):
+    """Parse Bible data in original schema format"""
     bibleData = {}
-
     # Iterate over books
     for book in data["books"]:
         # Extract book name
@@ -564,9 +583,72 @@ def getBibleData(bible_file_content):
         
         # Add book chapters to the result dictionary
         bibleData[book_name] = book_chapters
-
-    # Print the result
     return bibleData
+
+
+def parse_schema2(data):
+    """Parse Bible data in new schema format"""
+    bibleData = {}
+    
+    # Iterate over books
+    for book in data["books"]:
+        # Extract book name - use first name from 'names' array as primary name
+        # Fall back to 'book' field if names array is empty
+        if "names" in book and len(book["names"]) > 0:
+            book_name = book["names"][0]
+        else:
+            book_name = book["book"]
+        
+        book_proper_names.append(book_name)
+        # Initialize chapters for the book
+        book_chapters = []
+        
+        # Iterate over chapters
+        for chapter in book["chapters"]:
+            # Extract chapter number
+            chapter_number = chapter["chapter"]
+            
+            # Extract verses for the chapter
+            # In schema2, verse text can be null, so we use empty string as fallback
+            chapter_verses = [verse.get("text", "") or "" for verse in chapter["verses"]]
+            
+            # Add chapter verses to the book's chapters
+            book_chapters.append(chapter_verses)
+        
+        # Add book chapters to the result dictionary
+        bibleData[book_name] = book_chapters
+    
+    return bibleData
+
+
+def getBibleData(bible_file_content):
+    """
+    Load and parse Bible JSON data.
+    Automatically detects and handles multiple JSON schema formats.
+    
+    Supported schemas:
+    - Schema 1 (Original): Simple format with books[].name, chapters[].chapter, verses[].text
+    - Schema 2 (Enhanced): Format with books[].book, testament, names[], cross_references, etc.
+    """
+    # Load JSON data
+    data = json.loads(bible_file_content)
+    
+    # Detect schema type
+    schema_type = detect_bible_schema(data)
+    
+    if schema_type == "schema1":
+        print(f"✓ Detected Bible JSON format: Original schema")
+        return parse_schema1(data)
+    elif schema_type == "schema2":
+        print(f"✓ Detected Bible JSON format: Enhanced schema (with testaments, cross-references)")
+        return parse_schema2(data)
+    else:
+        # Try to parse as schema1 for backward compatibility
+        print("Warning: Unknown Bible JSON schema format. Attempting to parse as original format...")
+        try:
+            return parse_schema1(data)
+        except Exception as e:
+            raise ValueError(f"Unable to parse Bible JSON data. Unknown schema format. Error: {e}")
 
 
 ######################

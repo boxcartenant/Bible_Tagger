@@ -212,6 +212,7 @@ class DBManager:
         self.master = master
         self.callback = callback #used for clicking a tag and setting it as the current tag in the main window
         self.dbdata = dbdata #info about the currend db that's open
+        self.bible_path = None #path to the currently loaded Bible JSON
         self.top_window = None
         
         # Callbacks for DB operations
@@ -254,6 +255,9 @@ class DBManager:
         self.top_window.protocol("WM_DELETE_WINDOW", on_close)
 
         self.populate()
+        
+        # Update the Bible label with current Bible (if one is loaded)
+        self.update_bible_label()
     
     def get_db_display_name(self):
         """Get the display name for the current database"""
@@ -263,11 +267,26 @@ class DBManager:
         import os
         return os.path.basename(self.dbdata)
     
+    def get_bible_display_name(self):
+        """Get the display name for the current Bible JSON"""
+        import os
+        if self.bible_path and os.path.exists(self.bible_path):
+            return os.path.basename(self.bible_path)
+        else:
+            return "No Bible loaded"
+    
     def update_db_label(self, db_path):
         """Update the database label with the current database name"""
         self.dbdata = db_path
         if hasattr(self, 'db_name_label') and self.db_name_label:
             self.db_name_label.config(text=self.get_db_display_name())
+    
+    def update_bible_label(self, bible_path=None):
+        """Update the Bible JSON label with the current Bible name"""
+        if bible_path is not None:
+            self.bible_path = bible_path
+        if hasattr(self, 'bible_name_label') and self.bible_name_label:
+            self.bible_name_label.config(text=self.get_bible_display_name())
     
     def cleanup_db(self):
         """Show confirmation dialog and run database cleanup"""
@@ -363,6 +382,12 @@ class DBManager:
         self.db_name_label = ttk.Label(db_label_frame, text=self.get_db_display_name(), 
                                        font=('TkDefaultFont', 8), wraplength=90, justify='left')
         self.db_name_label.pack(anchor='w', fill='x')
+        
+        # Add label to show current Bible JSON
+        ttk.Label(db_label_frame, text="Current Bible:", font=('TkDefaultFont', 9, 'bold')).pack(anchor='w', pady=(5, 0))
+        self.bible_name_label = ttk.Label(db_label_frame, text=self.get_bible_display_name(), 
+                                          font=('TkDefaultFont', 8), wraplength=90, justify='left')
+        self.bible_name_label.pack(anchor='w', fill='x')
         
         # Add separator
         ttk.Separator(button_container, orient='horizontal').grid(row=1, column=0, sticky="ew", padx=2, pady=10)

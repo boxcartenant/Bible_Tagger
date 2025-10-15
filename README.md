@@ -37,10 +37,10 @@ I programmed this around the output of SWORD-to-JSON. Here's the link to that: h
 - Need universally unique way to identify book/chapter/verse across translations and even languages
     - Make verse references in the DB more explicit so that the tool will accommodate switching between translations with missing verses
 - CLI Scrape command
-- Use ffariajr's bible_scraper format
 - History smart replace
     - Clicking a single verse, adding or deleting a tag or editing a note, then shift-clicking another verse keeps both. eg. Genesis 1:1 -> Genesis 1:1-5
     - Clicking a single, not doing anything with it and then shift-clicking another replaces it in the history. Only Genesis 1:1-5 should be in history
+- if using my scraper format, show footnotes and cross references
 
 # Getting Started
 
