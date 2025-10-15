@@ -208,7 +208,7 @@ class TagInputDialog(simpledialog.Dialog):
 
 class DBManager:
     def __init__(self, master, callback, dbdata = None, load_bible_callback=None, load_db_callback=None, 
-                 save_db_as_callback=None, new_db_callback=None, merge_dbs_callback=None):
+                 save_db_as_callback=None, backup_db_callback=None, new_db_callback=None, merge_dbs_callback=None):
         self.master = master
         self.callback = callback #used for clicking a tag and setting it as the current tag in the main window
         self.dbdata = dbdata #info about the currend db that's open
@@ -218,6 +218,7 @@ class DBManager:
         self.load_bible_callback = load_bible_callback
         self.load_db_callback = load_db_callback
         self.save_db_as_callback = save_db_as_callback
+        self.backup_db_callback = backup_db_callback
         self.new_db_callback = new_db_callback
         self.merge_dbs_callback = merge_dbs_callback
         
@@ -267,6 +268,77 @@ class DBManager:
         self.dbdata = db_path
         if hasattr(self, 'db_name_label') and self.db_name_label:
             self.db_name_label.config(text=self.get_db_display_name())
+    
+    def cleanup_db(self):
+        """Show confirmation dialog and run database cleanup"""
+        if self.dbdata is None:
+            messagebox.showwarning("No Database", "No database is currently loaded.")
+            if self.top_window:
+                self.top_window.lift()
+            return
+        
+        # Create custom dialog with two buttons
+        dialog = tk.Toplevel(self.master)
+        dialog.title("Cleanup Database")
+        dialog.geometry("450x200")
+        dialog.transient(self.top_window if self.top_window else self.master)
+        dialog.grab_set()
+        
+        # Message
+        message = (
+            "Database Cleanup will:\n\n"
+            "1. Delete notes that are empty or whitespace\n"
+            "2. Delete orphaned verse groups (no tags and no note)\n\n"
+            "This operation cannot be undone, you are advised to create a backup."
+        )
+        
+        label = tk.Label(dialog, text=message, justify=tk.LEFT, padx=20, pady=20)
+        label.pack()
+        
+        # Button frame
+        button_frame = ttk.Frame(dialog)
+        button_frame.pack(pady=10)
+        
+        result = {'action': None}
+        
+        def on_continue():
+            result['action'] = 'continue'
+            dialog.destroy()
+        
+        def on_cancel():
+            result['action'] = 'cancel'
+            dialog.destroy()
+        
+        tk.Button(button_frame, text="Continue", command=on_continue, width=15).grid(row=0, column=0, padx=5)
+        tk.Button(button_frame, text="Cancel", command=on_cancel, width=15).grid(row=0, column=1, padx=5)
+        
+        # Center the dialog
+        dialog.update_idletasks()
+        x = (dialog.winfo_screenwidth() // 2) - (dialog.winfo_width() // 2)
+        y = (dialog.winfo_screenheight() // 2) - (dialog.winfo_height() // 2)
+        dialog.geometry(f"+{x}+{y}")
+        
+        # Wait for dialog to close
+        dialog.wait_window()
+        
+        # Process the result
+        if result['action'] == 'cancel' or result['action'] is None:
+            if self.top_window:
+                self.top_window.lift()
+            return
+        
+        # Run cleanup
+        try:
+            bdblib.cleanup_database(self.dbdata)
+            messagebox.showinfo("Cleanup Complete", "Database cleanup completed successfully.")
+            if self.top_window:
+                self.top_window.lift()
+            # Refresh the display
+            self.display_attributes()
+        except Exception as e:
+            messagebox.showerror("Cleanup Failed", f"Database cleanup failed:\n{str(e)}")
+            if self.top_window:
+                self.top_window.lift()
 
 
     def populate(self):
@@ -306,9 +378,13 @@ class DBManager:
                   command=self.new_db_callback).grid(row=5, column=0, sticky="ew", padx=2, pady=2)
         tk.Button(button_container, text="Merge DBs", 
                   command=self.merge_dbs_callback).grid(row=6, column=0, sticky="ew", padx=2, pady=2)
+        tk.Button(button_container, text="Backup DB", 
+                  command=self.backup_db_callback).grid(row=7, column=0, sticky="ew", padx=2, pady=2)
+        tk.Button(button_container, text="Cleanup DB", 
+                  command=self.cleanup_db).grid(row=8, column=0, sticky="ew", padx=2, pady=2)
         
         # Configure button width
-        for i in range(7):
+        for i in range(9):
             button_container.grid_rowconfigure(i, weight=0)
         button_container.grid_columnconfigure(0, weight=1, minsize=100)
         

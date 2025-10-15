@@ -41,7 +41,6 @@ I programmed this around the output of SWORD-to-JSON. Here's the link to that: h
 - Better DB Manager
     - load and new need to close the window afterwards
     - Make sure tag manager in db manager can see and delete orphaned tags and orphaned verse_group
-    - Cleanup database function
 - History smart replace
     - Clicking a single verse, adding or deleting a tag or editing a note, then shift-clicking another verse keeps both. eg. Genesis 1:1 -> Genesis 1:1-5
     - Clicking a single, not doing anything with it and then shift-clicking another replaces it in the history. Only Genesis 1:1-5 should be in history

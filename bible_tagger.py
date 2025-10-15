@@ -61,6 +61,7 @@ class BibleTaggerApp:
             load_bible_callback=None,  # Will be set after navigation_tree is created
             load_db_callback=lambda: self.load_db(),
             save_db_as_callback=lambda: self.save_db_as(),
+            backup_db_callback=lambda: self.backup_db(),
             new_db_callback=lambda: self.new_db(),
             merge_dbs_callback=lambda: self.merge_dbs()
         )
@@ -309,6 +310,30 @@ class BibleTaggerApp:
                 bibledb_lib.makeDB(file_path)
             self.load_bdb(file_path)
     
+    def backup_db(self):
+        """Create a backup of the current database without switching to it"""
+        global open_db_file
+
+        if open_db_file is None:
+            messagebox.showwarning("No Database", "No database is currently loaded to backup.")
+            return None
+
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".bdb", 
+            filetypes=[("Sqlite Bible Files", "*.bdb"), ("All files", "*.*")],
+            initialfile=os.path.basename(open_db_file).replace('.bdb', '_backup.bdb')
+        )
+
+        if file_path:
+            try:
+                bibledb_lib.copy_db(open_db_file, file_path)
+                print(f"Database backed up to: {file_path}")
+                return file_path
+            except Exception as e:
+                messagebox.showerror("Backup Failed", f"Failed to create backup:\n{str(e)}")
+                return None
+        return None
+    
     def save_db_as(self):
         global open_db_file
 
@@ -321,6 +346,7 @@ class BibleTaggerApp:
                     bibledb_lib.makeDB(file_path)
             else:
                 bibledb_lib.copy_db(open_db_file, file_path)
+            # Load the new database file (switch to it)
             self.load_bdb(file_path)
             print(f"Database saved as: {file_path}")
     
