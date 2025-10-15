@@ -226,7 +226,9 @@ class BibleTaggerApp:
     def load_db(self, on_startup=False):
         # Implement your logic to open the browse window and load the database
         # on_startup: if True and user cancels, return False to signal app should exit
-        file_path = filedialog.askopenfilename(defaultextension=".bdb", filetypes=[("Sqlite Bible Files", "*.bdb"), ("All files", "*.*")])
+        # Use DB Manager window as parent if it's open
+        parent = self.db_manager.top_window if hasattr(self.db_manager, 'top_window') and self.db_manager.top_window else self.master
+        file_path = filedialog.askopenfilename(parent=parent, defaultextension=".bdb", filetypes=[("Sqlite Bible Files", "*.bdb"), ("All files", "*.*")])
         if file_path:
             if file_path[-4:] == ".bdb":
                 # Check database version
@@ -247,7 +249,8 @@ class BibleTaggerApp:
                     user_choice = messagebox.askyesno(
                         "Database Migration Required",
                         message,
-                        icon='warning'
+                        icon='warning',
+                        parent=parent
                     )
                     
                     if user_choice:
@@ -264,7 +267,7 @@ class BibleTaggerApp:
                             if backup_path and os.path.exists(backup_path):
                                 success_msg += f"\nBackup saved at:\n{backup_path}"
                             
-                            messagebox.showinfo("Migration Successful", success_msg)
+                            messagebox.showinfo("Migration Successful", success_msg, parent=parent)
                             print(f"✓ Database successfully migrated to version {target_version}")
                             if backup_path:
                                 print(f"✓ Backup saved at: {backup_path}")
@@ -281,7 +284,7 @@ class BibleTaggerApp:
                             if backup_path and os.path.exists(backup_path):
                                 error_msg += f"\nYour original database was backed up to:\n{backup_path}"
                             
-                            messagebox.showerror("Migration Failed", error_msg)
+                            messagebox.showerror("Migration Failed", error_msg, parent=parent)
                             print(f"✗ Migration failed")
                             # Don't load the database, stay with current
                     else:
@@ -302,7 +305,9 @@ class BibleTaggerApp:
     def new_db(self):
         global open_db_file
 
-        file_path = filedialog.asksaveasfilename(defaultextension=".bdb", filetypes=[("Sqlite Bible Files", "*.bdb"), ("All files", "*.*")])
+        # Use DB Manager window as parent if it's open
+        parent = self.db_manager.top_window if hasattr(self.db_manager, 'top_window') and self.db_manager.top_window else self.master
+        file_path = filedialog.asksaveasfilename(parent=parent, defaultextension=".bdb", filetypes=[("Sqlite Bible Files", "*.bdb"), ("All files", "*.*")])
 
         if file_path:
             with open(file_path, 'w') as f:
@@ -314,11 +319,15 @@ class BibleTaggerApp:
         """Create a backup of the current database without switching to it"""
         global open_db_file
 
+        # Use DB Manager window as parent if it's open
+        parent = self.db_manager.top_window if hasattr(self.db_manager, 'top_window') and self.db_manager.top_window else self.master
+
         if open_db_file is None:
-            messagebox.showwarning("No Database", "No database is currently loaded to backup.")
+            messagebox.showwarning("No Database", "No database is currently loaded to backup.", parent=parent)
             return None
 
         file_path = filedialog.asksaveasfilename(
+            parent=parent,
             defaultextension=".bdb", 
             filetypes=[("Sqlite Bible Files", "*.bdb"), ("All files", "*.*")],
             initialfile=os.path.basename(open_db_file).replace('.bdb', '_backup.bdb')
@@ -330,14 +339,16 @@ class BibleTaggerApp:
                 print(f"Database backed up to: {file_path}")
                 return file_path
             except Exception as e:
-                messagebox.showerror("Backup Failed", f"Failed to create backup:\n{str(e)}")
+                messagebox.showerror("Backup Failed", f"Failed to create backup:\n{str(e)}", parent=parent)
                 return None
         return None
     
     def save_db_as(self):
         global open_db_file
 
-        file_path = filedialog.asksaveasfilename(defaultextension=".bdb", filetypes=[("Sqlite Bible Files", "*.bdb"), ("All files", "*.*")])
+        # Use DB Manager window as parent if it's open
+        parent = self.db_manager.top_window if hasattr(self.db_manager, 'top_window') and self.db_manager.top_window else self.master
+        file_path = filedialog.asksaveasfilename(parent=parent, defaultextension=".bdb", filetypes=[("Sqlite Bible Files", "*.bdb"), ("All files", "*.*")])
 
         if file_path:
             if open_db_file is None:
@@ -352,7 +363,9 @@ class BibleTaggerApp:
     
     def merge_dbs(self):
         # merges a second database into current database
-        file_path = filedialog.askopenfilename(defaultextension=".bdb", filetypes=[("Sqlite Bible Files", "*.bdb"), ("All files", "*.*")])
+        # Use DB Manager window as parent if it's open
+        parent = self.db_manager.top_window if hasattr(self.db_manager, 'top_window') and self.db_manager.top_window else self.master
+        file_path = filedialog.askopenfilename(parent=parent, defaultextension=".bdb", filetypes=[("Sqlite Bible Files", "*.bdb"), ("All files", "*.*")])
         if file_path:
             if file_path == open_db_file:
                 print("You can't merge a database into itself!")
@@ -713,7 +726,9 @@ class NavigationTree:
     def load_bible(self):
         #button to open a Bible file
         global bible_data
-        file_path = filedialog.askopenfilename(defaultextension=".json", filetypes=[("JSON Bibles", "*.json"), ("All files", "*.*")])
+        # Use DB Manager window as parent if it's open
+        parent = self.bta.db_manager.top_window if hasattr(self.bta.db_manager, 'top_window') and self.bta.db_manager.top_window else self.bta.master
+        file_path = filedialog.askopenfilename(parent=parent, defaultextension=".json", filetypes=[("JSON Bibles", "*.json"), ("All files", "*.*")])
         if file_path and file_path[-5:] == '.json':
             #print(f"Selected file: {file_path}")
             self.load_json(file_path)

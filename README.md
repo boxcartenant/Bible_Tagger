@@ -39,7 +39,6 @@ I programmed this around the output of SWORD-to-JSON. Here's the link to that: h
 - CLI Scrape command
 - Use ffariajr's bible_scraper format
 - Better DB Manager
-    - load and new need to close the window afterwards
     - Make sure tag manager in db manager can see and delete orphaned tags and orphaned verse_group
 - History smart replace
     - Clicking a single verse, adding or deleting a tag or editing a note, then shift-clicking another verse keeps both. eg. Genesis 1:1 -> Genesis 1:1-5
