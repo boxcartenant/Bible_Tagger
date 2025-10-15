@@ -39,11 +39,7 @@ I programmed this around the output of SWORD-to-JSON. Here's the link to that: h
 - CLI Scrape command
 - Use ffariajr's bible_scraper format
 - Better DB Manager
-    - remove db buttons from nav tree
-    - Revamp DB explorer so that it is db manager
-    - Add a third panel to db manager window
-        - the save as, new, load, and merge buttons should be there
-            - load and new need to close the window afterwards
+    - load and new need to close the window afterwards
     - Make sure tag manager in db manager can see and delete orphaned tags and orphaned verse_group
     - Cleanup database function
 - History smart replace

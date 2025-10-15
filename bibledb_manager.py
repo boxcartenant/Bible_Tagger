@@ -206,12 +206,20 @@ class TagInputDialog(simpledialog.Dialog):
 
 ######################Secondary Window is the window and the bargraph column. The filter view is instantiated here.
 
-class DBExplorer:
-    def __init__(self, master, callback, dbdata = None):
+class DBManager:
+    def __init__(self, master, callback, dbdata = None, load_bible_callback=None, load_db_callback=None, 
+                 save_db_as_callback=None, new_db_callback=None, merge_dbs_callback=None):
         self.master = master
         self.callback = callback #used for clicking a tag and setting it as the current tag in the main window
         self.dbdata = dbdata #info about the currend db that's open
         self.top_window = None
+        
+        # Callbacks for DB operations
+        self.load_bible_callback = load_bible_callback
+        self.load_db_callback = load_db_callback
+        self.save_db_as_callback = save_db_as_callback
+        self.new_db_callback = new_db_callback
+        self.merge_dbs_callback = merge_dbs_callback
         
         #Handy variables here...
         self.canvasFont = Font(size = 10)
@@ -233,9 +241,9 @@ class DBExplorer:
             return
         # Set up the secondary window
         self.top_window = tk.Toplevel(self.master)
-        self.top_window.title("DB Explorer")
+        self.top_window.title("DB Manager")
         self.top_window.iconbitmap("./bibletaggericon.ico")
-        self.top_window.geometry("800x500")
+        self.top_window.geometry("1000x600")
         self.reload_id = None
         self.reload_id2 = None
 
@@ -245,7 +253,20 @@ class DBExplorer:
         self.top_window.protocol("WM_DELETE_WINDOW", on_close)
 
         self.populate()
-        
+    
+    def get_db_display_name(self):
+        """Get the display name for the current database"""
+        if self.dbdata is None or self.dbdata == "":
+            return "No database loaded"
+        # Extract just the filename from the full path
+        import os
+        return os.path.basename(self.dbdata)
+    
+    def update_db_label(self, db_path):
+        """Update the database label with the current database name"""
+        self.dbdata = db_path
+        if hasattr(self, 'db_name_label') and self.db_name_label:
+            self.db_name_label.config(text=self.get_db_display_name())
 
 
     def populate(self):
@@ -253,7 +274,47 @@ class DBExplorer:
         self.this_window = ttk.PanedWindow(self.top_window, orient="horizontal")
         self.this_window.pack(fill="both", expand=True)
 
-        #Left-hand pane
+        #Leftmost pane - DB Management Buttons
+        self.button_frame = ttk.Frame(self.this_window, borderwidth=2)
+        self.button_frame.grid_rowconfigure(0, weight=1)
+        self.button_frame.grid_columnconfigure(0, weight=1)
+        
+        # Create button container
+        button_container = ttk.Frame(self.button_frame)
+        button_container.grid(row=0, column=0, sticky="n", padx=5, pady=5)
+        
+        # Add DB management buttons
+        tk.Button(button_container, text="Load Bible", 
+                  command=self.load_bible_callback).grid(row=0, column=0, sticky="ew", padx=2, pady=2)
+        tk.Button(button_container, text="Load DB", 
+                  command=self.load_db_callback).grid(row=1, column=0, sticky="ew", padx=2, pady=2)
+        tk.Button(button_container, text="Save DB As", 
+                  command=self.save_db_as_callback).grid(row=2, column=0, sticky="ew", padx=2, pady=2)
+        tk.Button(button_container, text="New DB", 
+                  command=self.new_db_callback).grid(row=3, column=0, sticky="ew", padx=2, pady=2)
+        tk.Button(button_container, text="Merge DBs", 
+                  command=self.merge_dbs_callback).grid(row=4, column=0, sticky="ew", padx=2, pady=2)
+        
+        # Add separator
+        ttk.Separator(button_container, orient='horizontal').grid(row=5, column=0, sticky="ew", padx=2, pady=10)
+        
+        # Add label to show current database
+        db_label_frame = ttk.Frame(button_container)
+        db_label_frame.grid(row=6, column=0, sticky="ew", padx=2, pady=2)
+        
+        ttk.Label(db_label_frame, text="Current DB:", font=('TkDefaultFont', 9, 'bold')).pack(anchor='w')
+        self.db_name_label = ttk.Label(db_label_frame, text=self.get_db_display_name(), 
+                                       font=('TkDefaultFont', 8), wraplength=90, justify='left')
+        self.db_name_label.pack(anchor='w', fill='x')
+        
+        # Configure button width
+        for i in range(7):
+            button_container.grid_rowconfigure(i, weight=0)
+        button_container.grid_columnconfigure(0, weight=1, minsize=100)
+        
+        self.this_window.add(self.button_frame, weight=0)
+
+        #Middle pane - Tag list
         self.myFrame = ttk.Frame(self.this_window)
         self.myFrame.grid(row=0, column=0, sticky="nsew")
         self.myFrame.grid_rowconfigure(0, weight=1)
@@ -273,12 +334,12 @@ class DBExplorer:
         h_scrollbar.grid(row=1, column=0, sticky="ew")
 
         #add the frame to the window
-        self.this_window.add(self.myFrame)
+        self.this_window.add(self.myFrame, weight=1)
 
-        #add another frame to the right-hand side of the window. We're using two columns now, baby!
+        #Right-hand pane - Verse sorting
         self.verse_sorting_panel = VerseSortingPanel(self.master, self.top_window, self.this_window, self.callback, self.dbdata, self)
         self.verse_sorting_panel.grid(row=0, column=1, sticky="nsew")
-        self.this_window.add(self.verse_sorting_panel)
+        self.this_window.add(self.verse_sorting_panel, weight=1)
 
         #configure the scroll region to make the canvas scrollable
         canvas_width = self.canvas.winfo_reqwidth()
@@ -338,18 +399,23 @@ class DBExplorer:
 
     def window_resize(self, event):
         # Resizing the window doesn't move the sash, but only results in resizing the right-hand frame.
-        self.verse_sorting_panel.display_attributes(canvas_width = self.this_window.winfo_width() - self.this_window.sashpos(0))
+        # With 3 panels, calculate width from both sash positions
+        button_panel_width = self.this_window.sashpos(0)
+        tag_panel_width = self.this_window.sashpos(1) - button_panel_width
+        remaining_width = self.this_window.winfo_width() - self.this_window.sashpos(1)
+        self.verse_sorting_panel.display_attributes(canvas_width = remaining_width)
     
     def on_sash_drag(self,event):
-        # If the moved sash is near the treeview sash (left), update the tree view
+        # Handle two sashes now - one between button panel and tag panel, one between tag panel and verse panel
+        # Check if dragging the first sash (between button panel and tag panel)
         if self.this_window.sashpos(0) - 10 < event.x < self.this_window.sashpos(0) + 10:
-            new_sash_position = event.x
-            self.myFrame.columnconfigure(0, weight=1)
-            self.myFrame.configure(width=new_sash_position)
-            #update the canvas
-            self.verse_sorting_panel.display_attributes(canvas_width = self.this_window.winfo_width() - new_sash_position)
             self.on_resize(event)
-            #self.verse_sorting_panel.display_attributes(canvas_width = self.this_window.winfo_width() - new_sash_position)
+        # Check if dragging the second sash (between tag panel and verse panel)
+        elif self.this_window.sashpos(1) - 10 < event.x < self.this_window.sashpos(1) + 10:
+            new_sash_position = event.x
+            remaining_width = self.this_window.winfo_width() - new_sash_position
+            self.verse_sorting_panel.display_attributes(canvas_width = remaining_width)
+            self.on_resize(event)
     
     def on_tag_click(self, event, item_id):
         self.callback(item_id)

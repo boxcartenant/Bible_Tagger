@@ -5,8 +5,8 @@ import bibledb_lib
 from tkinter.font import Font
 from tkinter import simpledialog
 from tkinter import messagebox
-from bibledb_explorer import DBExplorer
-from bibledb_explorer import TagInputDialog, combineVRefs
+from bibledb_manager import DBManager
+from bibledb_manager import TagInputDialog, combineVRefs
 import os
 import sys
 import configparser
@@ -52,11 +52,25 @@ class BibleTaggerApp:
         self.paned_window = ttk.PanedWindow(self.master, orient="horizontal")
         self.paned_window.pack(fill="both", expand=True)
 
-        self.db_explorer = DBExplorer(self.master, self.db_explorer_callback, open_db_file)
+        # Initialize DB Manager with callbacks for buttons that will be in it
+        # Note: navigation_tree is created after this, so we'll update callbacks later
+        self.db_manager = DBManager(
+            self.master, 
+            self.db_explorer_callback, 
+            open_db_file,
+            load_bible_callback=None,  # Will be set after navigation_tree is created
+            load_db_callback=lambda: self.load_db(),
+            save_db_as_callback=lambda: self.save_db_as(),
+            new_db_callback=lambda: self.new_db(),
+            merge_dbs_callback=lambda: self.merge_dbs()
+        )
 
         self.navigation_tree = NavigationTree(self)
         self.scripture_panel = ScripturePanel(self)
         self.tagger_panel = TaggerPanel(self)
+        
+        # Now that navigation_tree is created, set the load_bible callback
+        self.db_manager.load_bible_callback = lambda: self.navigation_tree.load_bible()
 
         self.history = History()
 
@@ -188,6 +202,9 @@ class BibleTaggerApp:
         
         global open_db_file, config_filename, cfg
         open_db_file = file_path
+        # Update DB Manager label if it exists
+        if hasattr(self, 'db_manager'):
+            self.db_manager.update_db_label(file_path)
         if not no_verse:
             # item = "verseClick" if a verse was clicked
             # data = {"verse": the verse text, "ref": the verse reference}
@@ -540,28 +557,14 @@ class NavigationTree:
         hsb.grid(row=1, column=0, sticky="ew")
         self.tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
         
-        # Create a frame for DB buttons below the tree
+        # Create a frame for DB Manager button below the tree
         self.db_buttons_frame = ttk.Frame(self.tree_frame)
         self.db_buttons_frame.grid(row=2, column=0, columnspan=2, sticky="ew", pady=5)
         
-        # Create DB buttons
-        self.load_db_button = tk.Button(self.db_buttons_frame, text="Load Bible", command=self.load_bible)
-        self.load_db_button.grid(row=0, column=0, sticky="ew", padx=2)
-
-        self.load_db_button = tk.Button(self.db_buttons_frame, text="Load DB", command=self.bta.load_db)
-        self.load_db_button.grid(row=0, column=1, sticky="ew", padx=2)
-
-        self.save_db_as_button = tk.Button(self.db_buttons_frame, text="Save DB As...", command=self.bta.save_db_as)
-        self.save_db_as_button.grid(row=0, column=2, sticky="ew", padx=2)
-        
-        self.new_db_button = tk.Button(self.db_buttons_frame, text="New DB", command=self.bta.new_db)
-        self.new_db_button.grid(row=1, column=0, sticky="ew", padx=2)
-
-        self.merge_dbs_button = tk.Button(self.db_buttons_frame, text="Merge DB...", command=self.bta.merge_dbs)
-        self.merge_dbs_button.grid(row=1, column=1, columnspan=1, sticky="ew", padx=2, pady=2)
-
-        self.explore_db_button = tk.Button(self.db_buttons_frame, text="Explore DB", command=lambda: self.bta.db_explorer.show(self.bta.db_explorer_callback, open_db_file))
-        self.explore_db_button.grid(row=1, column=2, sticky="ew", padx=2, pady=2)
+        # Create single Open DB Manager button
+        self.open_db_manager_button = tk.Button(self.db_buttons_frame, text="Open DB Manager", 
+                                                command=lambda: self.bta.db_manager.show(self.bta.db_explorer_callback, open_db_file))
+        self.open_db_manager_button.grid(row=0, column=0, sticky="ew", padx=2)
         
         self.bta.paned_window.add(self.tree_frame)
         self.tree.bind("<ButtonRelease-1>", self.on_tree_item_click)
