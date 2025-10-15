@@ -591,16 +591,22 @@ class History:
 
     def can_go_back(self):
         """Check if we can navigate backward in history"""
-        return self.navigation_index > 0
+        # Allow going back even from index 0 to -1 (no verse loaded state)
+        return self.navigation_index >= 0
     
     def can_go_forward(self):
         """Check if we can navigate forward in history"""
-        return self.navigation_index < len(self.navigation_history) - 1
+        # Can go forward if we have history and we're not at the end
+        # This includes going from -1 (no verse) to 0 (first verse)
+        return len(self.navigation_history) > 0 and self.navigation_index < len(self.navigation_history) - 1
 
     def go_back(self):
         """Navigate backward in history"""
         if self.can_go_back():
             self.navigation_index -= 1
+            # If we're now at -1, return None (no verse loaded state)
+            if self.navigation_index < 0:
+                return None, None
             prev_item, prev_data = self.navigation_history[self.navigation_index]
             return prev_item, prev_data
         return None, None
@@ -1231,15 +1237,25 @@ class TaggerPanel:
         #print(self.current_item)
         #keep track of what kind of thing we're currently showing.
         update_history = True
+        from_history = False
         if item == "history":
             if data["direction"] == "backward":
                 item, data = self.bta.history.go_back()
             elif data["direction"] == "forward":
                 item, data = self.bta.history.go_forward()
             update_history = False
+            from_history = True
+        
+        # Handle item: if from history and item is None, clear the current state
+        # Otherwise, use current_item if item is None
         if item == None:
-            item = self.current_item
-            #update_history = False
+            if from_history:
+                # Going back to "no verse loaded" state
+                self.current_item = None
+                self.current_data = None
+            else:
+                # Regular None call, use existing state
+                item = self.current_item
         else:
             self.current_item = item 
 
@@ -1260,7 +1276,8 @@ class TaggerPanel:
             data = self.current_data
         
         # Add new state to navigation history using the History class
-        if update_history:
+        # Only add to history if we have valid item and data (skip empty initialization calls)
+        if update_history and self.current_item is not None and self.current_data is not None:
             self.bta.history.add_or_replace_state(self.current_item, self.current_data)
 
     
