@@ -769,7 +769,44 @@ class NavigationTree:
         self.tree_item_data.clear()
         
         self.populate_tree(bible_data, '')
-        self.bta.cause_canvas_to_refresh()
+        
+        # Find the last verseClick in history and navigate to it
+        last_verse_ref = None
+        last_verse_data = None
+        if self.bta.history.navigation_index >= 0:
+            # Look backwards through history to find the most recent verseClick
+            for i in range(self.bta.history.navigation_index, -1, -1):
+                hist_item, hist_data = self.bta.history.navigation_history[i]
+                if hist_item == "verseClick" and hist_data and 'ref' in hist_data:
+                    last_verse_ref = hist_data['ref']
+                    last_verse_data = hist_data
+                    print(f"Found last verse in history: {last_verse_ref}")
+                    break
+        
+        # If we found a verse in history, navigate to it
+        if last_verse_ref:
+            try:
+                # Parse the reference to get book and chapter
+                parsed = bibledb_lib.parseVerseReference(last_verse_ref)
+                book = bibledb_lib.book_proper_names[parsed['sb']]
+                chapter = parsed['sc']
+                navtreedata = f"/{book}/Ch {chapter}"
+                
+                print(f"Navigating to: {navtreedata}")
+                
+                # Select the item in the tree to display the chapter
+                self.select_item(navtreedata, True)
+                
+                # Display the verse attributes (this will also refresh the scripture panel)
+                self.bta.tagger_panel.display_attributes("verseClick", last_verse_data, False)
+            except Exception as e:
+                print(f"Error navigating to verse: {e}")
+                self.bta.cause_canvas_to_refresh()
+        else:
+            print("No verse found in history, just refreshing canvas")
+            # No verse in history, just refresh the canvas
+            self.bta.cause_canvas_to_refresh()
+        
         self.bta.update_tree_colors()
         
         # Save Bible path to config if use_last_bible is enabled
