@@ -531,36 +531,39 @@ class BibleTaggerApp:
     def cause_canvas_to_refresh(self):
         self.scripture_panel.display_chapter()
     
-    def options_callback(self, data, scrollreset = False):
-        #this is used when you are looking at tag xref data and you click a verse associated with the tag.
-        #causes the tree and canvas to navigate to the verse you clicked.
-        #data = (startverse, endverse)
+    def change_bookchapter(self, data):
+        """
+        Navigate to a book/chapter and select verse(s) without updating TaggerPanel.
+        This is for navigation without triggering display_attributes (useful for history navigation).
+        data = (startverse, endverse) tuple of verse references
+        """
         start = bibledb_lib.parseVerseReference(data[0])
         end = bibledb_lib.parseVerseReference(data[1])
-
-        checkbook = self.scripture_panel.selected_start_b #capture this, so we won't reset the canvas view if we're not moving chapters.
         
+        # Update scripture panel selection
         self.scripture_panel.selected_start_b = bibledb_lib.book_proper_names[start['sb']]
         self.scripture_panel.selected_end_b = bibledb_lib.book_proper_names[end['eb']]
         self.scripture_panel.selected_start_c = start['sc']
         self.scripture_panel.selected_end_c = end['ec']
         self.scripture_panel.selected_start_v = start['sv']
         self.scripture_panel.selected_end_v = end['ev']
-
-        #navigate to the first verse in the range
-        navtreedata = "/"+bibledb_lib.book_proper_names[start['sb']]+"/Ch "+start['sc']
         
-        #if not scrollreset:
-            #Sometimes if you are clicking a verse in tag data for a chapter you already have open, you'll already be looking at that verse
-            # and have scrolled to a place you want. In that case, maybe you don't want it to reset....
-            #scrollreset = checkbook != self.scripture_panel.selected_start_b
-        #self.navigation_tree.select_item(navtreedata, scrollreset)
-        self.navigation_tree.select_item(navtreedata, True) #changed this to "true" so it will always jump to the selected verse.
+        # Navigate to the first verse in the range
+        navtreedata = "/" + bibledb_lib.book_proper_names[start['sb']] + "/Ch " + start['sc']
+        self.navigation_tree.select_item(navtreedata, True)
+    
+    def options_callback(self, data, scrollreset = False):
+        """
+        Navigate to a verse and update TaggerPanel to show verse details.
+        This is used when you click a verse in tag xref data.
+        data = (startverse, endverse) tuple of verse references
+        """
+        # Navigate to the chapter and select verse(s)
+        self.change_bookchapter(data)
         
+        # Update TaggerPanel to show the verse
         self.tagger_panel.display_attributes("verseClick", {"verse": "This part of the code was never implemented", "ref": combineVRefs(data[0],data[1])}, False)
         self.tagger_panel.reset_scrollregion(None)
-        #self.scripture_panel.display_chapter(reset_scrollbar = True)
-        #self.scripture_panel.reset_scrollregion()
         
     def db_explorer_callback(self, clickdata = None, item = "tagClick"):
         #this function will either focus a tag or a verse, depending on what was clicked in the secondary window
@@ -604,6 +607,21 @@ class History:
         # Can go forward if we have history and we're not at the end
         # This includes going from -1 (no verse) to 0 (first verse)
         return len(self.navigation_history) > 0 and self.navigation_index < len(self.navigation_history) - 1
+    
+    def peek_back(self):
+        """Peek at the previous history item without changing state"""
+        if self.can_go_back():
+            prev_index = self.navigation_index - 1
+            if prev_index >= 0:
+                return self.navigation_history[prev_index]
+        return None, None
+
+    def peek_forward(self):
+        """Peek at the next history item without changing state"""
+        if self.can_go_forward():
+            next_index = self.navigation_index + 1
+            return self.navigation_history[next_index]
+        return None, None
 
     def go_back(self):
         """Navigate backward in history"""
@@ -1907,16 +1925,36 @@ class TaggerPanel:
         
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
 
-    
+    def check_history_chapter(self, item, data):
+        # returns None if no change to chapter is needed, otherwise returns the value to pass to change_bookchapter()
+        if item == "verseClick" and data and 'ref' in data:
+            ref = data['ref']
+            # Parse to get start and end verse references
+            if '-' in ref:
+                parts = ref.split('-')
+                start_ref = parts[0].strip()
+                end_ref = parts[1].strip()
+            else:
+                start_ref = ref
+                end_ref = ref
+            return (start_ref, end_ref)
+        return None
+
     def go_back(self, _):
         """Navigate backward in history"""
         if self.bta.history.can_go_back():
+            chapter_change = self.check_history_chapter(*self.bta.history.peek_back())
+            if chapter_change:
+                self.bta.change_bookchapter(chapter_change)
             self.display_attributes("history", {"direction": "backward"}, False)
             self.reset_scrollregion(None)
     
     def go_forward(self, _):
         """Navigate forward in history"""
         if self.bta.history.can_go_forward():
+            chapter_change = self.check_history_chapter(*self.bta.history.peek_forward())
+            if chapter_change:
+                self.bta.change_bookchapter(chapter_change)
             self.display_attributes("history", {"direction": "forward"}, False)
             self.reset_scrollregion(None)
     
