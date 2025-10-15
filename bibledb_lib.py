@@ -536,58 +536,15 @@ def tagNoteEntry(tag_name, note_data):
 # so verses are accessed like this:
 # bibleData['Psalm'][19][7]
 
-def detect_bible_schema(data):
+def parseBibleData(data):
     """
-    Detect which Bible JSON schema is being used.
-    Returns: 'schema1' for original format, 'schema2' for new format, or None if unknown
+    Store Bible JSON data as-is with minimal processing.
+    Just extract book names and store chapters directly.
+    
+    Returns:
+    bibleData: dict - {book_name: [chapters_array]}
+        Each book contains the chapters array directly from JSON
     """
-    if "books" not in data:
-        return None
-    
-    if len(data["books"]) == 0:
-        return None
-    
-    first_book = data["books"][0]
-    
-    # Schema 1 has 'name' at book level
-    # Schema 2 has 'book', 'book_sequence', 'testament', 'names' at book level
-    if "name" in first_book and "book" not in first_book:
-        return "schema1"
-    elif "book" in first_book and "book_sequence" in first_book and "testament" in first_book:
-        return "schema2"
-    else:
-        return None
-
-
-def parse_schema1(data):
-    """Parse Bible data in original schema format"""
-    bibleData = {}
-    # Iterate over books
-    for book in data["books"]:
-        # Extract book name
-        book_name = book["name"]
-        book_proper_names.append(book_name)
-        # Initialize chapters for the book
-        book_chapters = []
-        
-        # Iterate over chapters
-        for chapter in book["chapters"]:
-            # Extract chapter number
-            chapter_number = chapter["chapter"]
-            
-            # Extract verses for the chapter
-            chapter_verses = [verse["text"] for verse in chapter["verses"]]
-            
-            # Add chapter verses to the book's chapters
-            book_chapters.append(chapter_verses)
-        
-        # Add book chapters to the result dictionary
-        bibleData[book_name] = book_chapters
-    return bibleData
-
-
-def parse_schema2(data):
-    """Parse Bible data in new schema format"""
     bibleData = {}
     
     # Iterate over books
@@ -600,55 +557,19 @@ def parse_schema2(data):
             book_name = book["book"]
         
         book_proper_names.append(book_name)
-        # Initialize chapters for the book
-        book_chapters = []
         
-        # Iterate over chapters
-        for chapter in book["chapters"]:
-            # Extract chapter number
-            chapter_number = chapter["chapter"]
-            
-            # Extract verses for the chapter
-            # In schema2, verse text can be null, so we use empty string as fallback
-            chapter_verses = [verse.get("text", "") or "" for verse in chapter["verses"]]
-            
-            # Add chapter verses to the book's chapters
-            book_chapters.append(chapter_verses)
-        
-        # Add book chapters to the result dictionary
-        bibleData[book_name] = book_chapters
+        # Store chapters directly as they are in the JSON
+        bibleData[book_name] = book["chapters"]
     
     return bibleData
 
 
 def getBibleData(bible_file_content):
-    """
-    Load and parse Bible JSON data.
-    Automatically detects and handles multiple JSON schema formats.
-    
-    Supported schemas:
-    - Schema 1 (Original): Simple format with books[].name, chapters[].chapter, verses[].text
-    - Schema 2 (Enhanced): Format with books[].book, testament, names[], cross_references, etc.
-    """
+    """Load and parse Bible JSON data"""
     # Load JSON data
     data = json.loads(bible_file_content)
-    
-    # Detect schema type
-    schema_type = detect_bible_schema(data)
-    
-    if schema_type == "schema1":
-        print(f"✓ Detected Bible JSON format: Original schema")
-        return parse_schema1(data)
-    elif schema_type == "schema2":
-        print(f"✓ Detected Bible JSON format: Enhanced schema (with testaments, cross-references)")
-        return parse_schema2(data)
-    else:
-        # Try to parse as schema1 for backward compatibility
-        print("Warning: Unknown Bible JSON schema format. Attempting to parse as original format...")
-        try:
-            return parse_schema1(data)
-        except Exception as e:
-            raise ValueError(f"Unable to parse Bible JSON data. Unknown schema format. Error: {e}")
+
+    return parseBibleData(data)
 
 
 ######################

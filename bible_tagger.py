@@ -48,6 +48,10 @@ class BibleTaggerApp:
         bdbpath = cli_args.db_path    if cli_args.db_path   else cfg.get('DEFAULT', 'bdb_path',  fallback=None)
         initial_window_size = cfg.get('INTERNAL', 'window_size', fallback="1000x600")
 
+        self.show_footnotes = cfg.getboolean('DEFAULT', 'show_footnotes', fallback=True)
+        self.show_crossrefs = cfg.getboolean('DEFAULT', 'show_crossrefs', fallback=True)
+        self.footnote_tooltip_delay = cfg.getint('DEFAULT', 'footnote_tooltip_delay', fallback=500)
+
         self.master.geometry(initial_window_size)
 
         self.paned_window = ttk.PanedWindow(self.master, orient="horizontal")
@@ -885,7 +889,65 @@ class ScripturePanel:
         self.canvas.config(scrollregion=(0, 0, canvas_width, canvas_height))
         self.current_item = "/"
         self.current_data = "/"
+        
+        # Tooltip window for footnotes
+        self.tooltip_window = None
+        self.tooltip_timer = None
             
+    def show_footnote_tooltip(self, event, footnote_text):
+        """Show a tooltip with the footnote text after a delay"""
+        # Cancel any pending tooltip
+
+        if self.bta.footnote_tooltip_delay < 0:
+            return
+        elif self.bta.footnote_tooltip_delay == 0: 
+            self._create_tooltip(event, footnote_text)
+        else:
+            if self.tooltip_timer:
+                self.canvas.after_cancel(self.tooltip_timer)
+            # Schedule tooltip to appear after the configured delay
+            self.tooltip_timer = self.canvas.after(self.bta.footnote_tooltip_delay, lambda: self._create_tooltip(event, footnote_text))
+
+    def _create_tooltip(self, event, footnote_text):
+        """Create the actual tooltip window"""
+        # Hide any existing tooltip first
+        self.hide_footnote_tooltip()
+        
+        # Create a toplevel window for the tooltip
+        self.tooltip_window = tk.Toplevel(self.canvas)
+        self.tooltip_window.wm_overrideredirect(True)  # Remove window decorations
+        
+        # Position the tooltip near the cursor
+        x = event.x_root + 10
+        y = event.y_root + 10
+        self.tooltip_window.wm_geometry(f"+{x}+{y}")
+        
+        # Create label with footnote text
+        label = tk.Label(
+            self.tooltip_window, 
+            text=footnote_text, 
+            background="lightyellow", 
+            relief="solid", 
+            borderwidth=1,
+            font=self.italicFont,
+            wraplength=400,
+            justify=tk.LEFT,
+            padx=5,
+            pady=5
+        )
+        label.pack()
+    
+    def hide_footnote_tooltip(self):
+        """Hide the footnote tooltip"""
+        # Cancel any pending tooltip
+        if self.tooltip_timer:
+            self.canvas.after_cancel(self.tooltip_timer)
+            self.tooltip_timer = None
+        
+        # Destroy tooltip window if it exists
+        if self.tooltip_window:
+            self.tooltip_window.destroy()
+            self.tooltip_window = None
         
     def on_text_click(self, event, item_id, scopename, vv):
         #item_id is the text of the selected verse
@@ -1022,7 +1084,6 @@ class ScripturePanel:
             y_offset += boldlineheight + textlinegap*2
             
             verse_area_width = self.bta.paned_window.sashpos(1) - self.bta.paned_window.sashpos(0) - self.scrollbar_width - textelbowroom*2
-            v = 1
             c = int(item_hierarchy[-1].replace("Ch ",""))
             b = int(bibledb_lib.getBookIndex(item_hierarchy[-2]))
             sv = int(self.selected_start_v)
@@ -1034,8 +1095,18 @@ class ScripturePanel:
 
             #print("book:",sb, b, eb,"\nchapter:",sc,c,ec,"\nverse:",sv, v, ev)
             verse_heights = []
+            footnotes = []  # Collect footnotes for display at bottom
+            cross_refs = []  # Collect cross-references for display at bottom
 
-            for verse in data:
+            # data is now a chapter dict with a "verses" array
+            verses = data.get("verses", []) if isinstance(data, dict) else data
+
+            for verse_obj in verses:
+
+                v = verse_obj.get("verse")
+                verse_text = verse_obj.get("text", "")
+                has_footnote = bool(verse_obj.get("footnote")) if self.bta.footnote_tooltip_delay >= 0 else False
+
                 textColor = "black"
                 #if the current verse is in the user-selected range, highlight it.
                 if ((sb == b and sc == c and sv <= v) or\
@@ -1055,15 +1126,29 @@ class ScripturePanel:
                 vtop = y_offset - textlinegap
                 
                 verseRef = str(item).replace("/Ch "," ").replace("/","")+":"+str(v)
+                footnote_text = verse_obj.get("footnote", "")
                 #print(verseRef)
-                #Print the verse number in italics
-                text_object = self.canvas.create_text(x_offset, y_offset, text=str(v), anchor=tk.NW, fill = textColor, font = self.italicFont)
-                self.canvas.tag_bind(text_object, '<Button-1>', lambda event, item_id=text_object, vref=verseRef, verse=verse, vnum = v: self.on_text_click(event, verse, vref, vnum))
-                v_offset = self.italicFont.measure(str(v)) + textelbowroom + x_offset #offset for the verse, to the right of the verse number.
+                #Print the verse number in italics (underline if it has a footnote)
+                verse_font = self.italicunderlineFont if has_footnote else self.italicFont
+                text_object = self.canvas.create_text(x_offset, y_offset, text=str(v), anchor=tk.NW, fill = textColor, font = verse_font)
+                self.canvas.tag_bind(text_object, '<Button-1>', lambda event, item_id=text_object, vref=verseRef, verse=verse_text, vnum = v: self.on_text_click(event, verse_text, vref, vnum))
+                
+                # Add hover tooltip for footnotes
+                if has_footnote:
+                    self.canvas.tag_bind(text_object, '<Enter>', lambda event, fn=footnote_text: self.show_footnote_tooltip(event, fn))
+                    self.canvas.tag_bind(text_object, '<Leave>', lambda event: self.hide_footnote_tooltip())
+                
+                v_offset = verse_font.measure(str(v)) + textelbowroom + x_offset #offset for the verse, to the right of the verse number.
                 # print the verse; wrap to the size of the middle column
-                for line in wrapText(verse, verse_area_width - v_offset, self.canvasFont):
+                for line in wrapText(verse_text, verse_area_width - v_offset, self.canvasFont):
                     text_object = self.canvas.create_text(v_offset, y_offset, text=line, anchor=tk.NW, fill = textColor, font = self.canvasFont)
-                    self.canvas.tag_bind(text_object, '<Button-1>', lambda event, item_id=text_object, vref=verseRef, verse=verse, vnum = v: self.on_text_click(event, verse, vref, vnum))
+                    self.canvas.tag_bind(text_object, '<Button-1>', lambda event, item_id=text_object, vref=verseRef, verse=verse_text, vnum = v: self.on_text_click(event, verse_text, vref, vnum))
+                    
+                    # Add hover tooltip for footnotes on verse text too
+                    if has_footnote:
+                        self.canvas.tag_bind(text_object, '<Enter>', lambda event, fn=footnote_text: self.show_footnote_tooltip(event, fn))
+                        self.canvas.tag_bind(text_object, '<Leave>', lambda event: self.hide_footnote_tooltip())
+                    
                     y_offset += textlineheight + textlinegap
 
                 vbot = y_offset - textlinegap
@@ -1071,7 +1156,14 @@ class ScripturePanel:
                 #keep track of the top and bottom coord for each verse, to mark which ones have notes and tags.
                 verse_heights.append({'v':v,'top':vtop,'bot':vbot})
                 
-                v += 1
+                # Collect footnotes and cross-references if present
+                if verse_obj.get("footnote") and self.bta.show_footnotes:
+                    footnotes.append((v, verse_obj["footnote"]))
+                if verse_obj.get("cross_references") and self.bta.show_crossrefs:
+                    # Extract refers_to array from cross_references object
+                    refs = verse_obj["cross_references"].get("refers_to", [])
+                    if refs:
+                        cross_refs.append((v, refs))
 
             #draw lines next to every verse that has a note or a tag associated with it.
             for row in notestags:
@@ -1115,6 +1207,76 @@ class ScripturePanel:
                     self.canvas.create_line(lx, high_vh['bot'], lx+2, high_vh['bot'], fill=color, width=5)
                     self.canvas.create_line(lx, low_vh['top'], lx+2, low_vh['top'], fill=color, width=5)
                 id_lines -= 2
+            
+            # Display footnotes and cross-references at the bottom
+            if (footnotes and self.bta.show_footnotes) or (cross_refs and self.bta.show_crossrefs):
+                y_offset += textlinegap * 3
+                
+                # Draw horizontal separator line
+                self.canvas.create_line(x_offset, y_offset, verse_area_width, y_offset, fill="gray", width=1)
+                y_offset += textlinegap * 2
+                
+                # Display footnotes
+                if footnotes and self.bta.show_footnotes:
+                    for verse_num, footnote in footnotes:
+                        # Display verse number in regular font, then footnote in italic
+                        verse_label = f"[{verse_num}]"
+                        
+                        # Create the verse number label (not italic)
+                        self.canvas.create_text(x_offset, y_offset, text=verse_label, anchor=tk.NW, 
+                                               fill="darkblue", font=self.canvasFont)
+                        
+                        # Calculate offset for footnote text after verse number
+                        label_width = self.canvasFont.measure(verse_label) + textelbowroom
+                        
+                        # Wrap and display footnote text in italic
+                        first_line = True
+                        for line in wrapText(footnote, verse_area_width - x_offset - label_width, self.canvasFont):
+                            if first_line:
+                                # First line goes next to verse number
+                                self.canvas.create_text(x_offset + label_width, y_offset, text=line, anchor=tk.NW, 
+                                                       fill="darkblue", font=self.italicFont)
+                                first_line = False
+                            else:
+                                # Subsequent lines are indented to align with first line
+                                self.canvas.create_text(x_offset + label_width, y_offset, text=line, anchor=tk.NW, 
+                                                       fill="darkblue", font=self.italicFont)
+                            y_offset += textlineheight + textlinegap
+                        y_offset += textlinegap  # Extra space between footnotes
+                
+                # Display cross-references
+                if cross_refs and self.bta.show_crossrefs:
+                    if footnotes:  # Add extra space if there were footnotes
+                        y_offset += textlinegap * 2
+                    
+                    for verse_num, refs in cross_refs:
+                        # Format cross-references
+                        ref_strings = []
+                        for ref in refs:
+                            ref_str = f"{ref['book']} {ref['chapter']}:{ref['verse']}"
+                            ref_strings.append(ref_str)
+                        
+                        # Display verse number in regular font
+                        verse_label = f"[{verse_num}]"
+                        self.canvas.create_text(x_offset, y_offset, text=verse_label, anchor=tk.NW,
+                                               fill="darkgreen", font=self.canvasFont)
+                        
+                        # Calculate offset for xref text after verse number
+                        label_width = self.canvasFont.measure(verse_label) + textelbowroom
+                        
+                        # Wrap and display cross-reference text in italic
+                        xref_text = f"See also: {', '.join(ref_strings)}"
+                        first_line = True
+                        for line in wrapText(xref_text, verse_area_width - x_offset - label_width, self.canvasFont):
+                            if first_line:
+                                self.canvas.create_text(x_offset + label_width, y_offset, text=line, anchor=tk.NW,
+                                                       fill="darkgreen", font=self.italicFont)
+                                first_line = False
+                            else:
+                                self.canvas.create_text(x_offset + label_width, y_offset, text=line, anchor=tk.NW,
+                                                       fill="darkgreen", font=self.italicFont)
+                            y_offset += textlineheight + textlinegap
+                        y_offset += textlinegap  # Extra space between cross-references
                         
         #print(item_hierarchy)
         #print(data)
