@@ -585,12 +585,13 @@ class NavigationTree:
         
         # Create a frame for DB Manager button below the tree
         self.db_buttons_frame = ttk.Frame(self.tree_frame)
-        self.db_buttons_frame.grid(row=2, column=0, columnspan=2, sticky="ew", pady=5)
+        self.db_buttons_frame.grid(row=2, column=0, columnspan=2, sticky="ew", pady=5, padx=2)
+        self.db_buttons_frame.grid_columnconfigure(0, weight=1)
         
         # Create single Open DB Manager button
         self.open_db_manager_button = tk.Button(self.db_buttons_frame, text="Open DB Manager", 
                                                 command=lambda: self.bta.db_manager.show(self.bta.db_explorer_callback, open_db_file))
-        self.open_db_manager_button.grid(row=0, column=0, sticky="ew", padx=2)
+        self.open_db_manager_button.grid(row=0, column=0, sticky="ew")
         
         self.bta.paned_window.add(self.tree_frame)
         self.tree.bind("<ButtonRelease-1>", self.on_tree_item_click)
