@@ -283,29 +283,29 @@ class DBManager:
         button_container = ttk.Frame(self.button_frame)
         button_container.grid(row=0, column=0, sticky="n", padx=5, pady=5)
         
-        # Add DB management buttons
-        tk.Button(button_container, text="Load Bible", 
-                  command=self.load_bible_callback).grid(row=0, column=0, sticky="ew", padx=2, pady=2)
-        tk.Button(button_container, text="Load DB", 
-                  command=self.load_db_callback).grid(row=1, column=0, sticky="ew", padx=2, pady=2)
-        tk.Button(button_container, text="Save DB As", 
-                  command=self.save_db_as_callback).grid(row=2, column=0, sticky="ew", padx=2, pady=2)
-        tk.Button(button_container, text="New DB", 
-                  command=self.new_db_callback).grid(row=3, column=0, sticky="ew", padx=2, pady=2)
-        tk.Button(button_container, text="Merge DBs", 
-                  command=self.merge_dbs_callback).grid(row=4, column=0, sticky="ew", padx=2, pady=2)
-        
-        # Add separator
-        ttk.Separator(button_container, orient='horizontal').grid(row=5, column=0, sticky="ew", padx=2, pady=10)
-        
-        # Add label to show current database
+        # Add label to show current database (at top)
         db_label_frame = ttk.Frame(button_container)
-        db_label_frame.grid(row=6, column=0, sticky="ew", padx=2, pady=2)
+        db_label_frame.grid(row=0, column=0, sticky="ew", padx=2, pady=2)
         
         ttk.Label(db_label_frame, text="Current DB:", font=('TkDefaultFont', 9, 'bold')).pack(anchor='w')
         self.db_name_label = ttk.Label(db_label_frame, text=self.get_db_display_name(), 
                                        font=('TkDefaultFont', 8), wraplength=90, justify='left')
         self.db_name_label.pack(anchor='w', fill='x')
+        
+        # Add separator
+        ttk.Separator(button_container, orient='horizontal').grid(row=1, column=0, sticky="ew", padx=2, pady=10)
+        
+        # Add DB management buttons
+        tk.Button(button_container, text="Load Bible", 
+                  command=self.load_bible_callback).grid(row=2, column=0, sticky="ew", padx=2, pady=2)
+        tk.Button(button_container, text="Load DB", 
+                  command=self.load_db_callback).grid(row=3, column=0, sticky="ew", padx=2, pady=2)
+        tk.Button(button_container, text="Save DB As", 
+                  command=self.save_db_as_callback).grid(row=4, column=0, sticky="ew", padx=2, pady=2)
+        tk.Button(button_container, text="New DB", 
+                  command=self.new_db_callback).grid(row=5, column=0, sticky="ew", padx=2, pady=2)
+        tk.Button(button_container, text="Merge DBs", 
+                  command=self.merge_dbs_callback).grid(row=6, column=0, sticky="ew", padx=2, pady=2)
         
         # Configure button width
         for i in range(7):
@@ -499,10 +499,7 @@ class DBManager:
         if self.dbdata is None:
             self.canvas.create_text(10, 30, text="Select a verse to load a DB.", fill="green", font = self.canvasFont)
         else:
-            # Display currently loaded database at the top
-            db_name = os.path.basename(self.dbdata) if self.dbdata else "None"
-            self.canvas.create_text(x_offset, y_offset, text=f"Database: {db_name}", anchor=tk.W, fill="navy", font=self.boldFont)
-            y_offset += boldlineheight + textlinegap * 3
+            # Database name is now displayed in the left button panel above the buttons
             
             tag_rows = bdblib.get_tag_list(self.dbdata)
             tag_to_id = {row[1]: row[0] for row in tag_rows}
