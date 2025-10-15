@@ -1,4 +1,4 @@
-# How to Create Migraton Scripts
+# How to Create Migration Scripts
 
 ### Naming
 

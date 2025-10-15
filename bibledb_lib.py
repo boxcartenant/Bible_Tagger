@@ -1032,9 +1032,8 @@ def get_db_stuff(database_file, x_type, y_type, y_value):
         query_string = '''
             SELECT t2.*
             FROM tag as t1
-            JOIN tag_tag AS tt ON ((t1.tag_id = tt.tag_1_id AND t2.tag_id = tt.tag_2_id)
-                OR (t1.tag_id = tt.tag_2_id AND t2.tag_id = tt.tag_1_id))
-            JOIN tag AS t2 ON (t2.tag_id = tt.tag_1_id OR t2.tag_id = tt.tag_2_id)
+            JOIN tag_tag AS tt ON (t1.tag_id = tt.tag_1_id OR t1.tag_id = tt.tag_2_id)
+            JOIN tag AS t2 ON (tt.tag_1_id = t2.tag_id OR tt.tag_2_id = t2.tag_id) AND t2.tag_id != t1.tag_id
             WHERE t1.tag = ? AND t2.tag != ?
         '''
         cursor.execute(query_string, (y_value, y_value))

@@ -62,7 +62,7 @@ def bargraph_size(test, testmin, testmax, barmin=0, barmax=100):
     
     # Handle case where all values are the same (avoid division by zero)
     if testmax_adjusted == 0:
-        result = barmin  # or could use (barmin + barmax) / 2 for middle value
+        result = barmin
     else:
         result = (test_adjusted * (barmax - barmin) / testmax_adjusted) + barmin
     
