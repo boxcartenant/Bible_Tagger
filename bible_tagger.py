@@ -102,14 +102,54 @@ class BibleTaggerApp:
         self.tagger_panel.canvas.bind("<Leave>", self.clear_active_panel)
         #self.tagger_panel.canvas_frame.bind("<MouseWheel>", self.scroll_active_panel)
 
-        try:
-            self.navigation_tree.load_json(jsonpath)
-        except Exception as e:
-            print("Failed to load JSON file from config:", e)
-            jsonpath = None
+        # Try to load Bible JSON file
+        bible_loaded = False
+        if jsonpath:
+            try:
+                self.navigation_tree.load_json(jsonpath)
+                bible_loaded = True
+            except Exception as e:
+                print("Failed to load JSON file from config:", e)
+                jsonpath = None
+        
+        # If no Bible JSON loaded, prompt user to select one
+        if not bible_loaded:
+            response = messagebox.askyesno(
+                "No Bible Loaded",
+                "No Bible JSON file is currently loaded.\n\n"
+                "Would you like to select a Bible JSON file now?\n\n"
+                "(You can also load one later using the 'Load Bible' button)",
+                icon='question'
+            )
+            
+            if response:
+                file_path = filedialog.askopenfilename(
+                    parent=self.master,
+                    title="Select Bible JSON File",
+                    defaultextension=".json",
+                    filetypes=[("JSON Bibles", "*.json"), ("All files", "*.*")]
+                )
+                
+                if file_path and file_path[-5:] == '.json':
+                    try:
+                        self.navigation_tree.load_json(file_path)
+                        bible_loaded = True
+                        # Save message depends on use_last_bible setting
+                        if not cfg.getboolean('DEFAULT', 'use_last_bible', fallback=False):
+                            print(f"Bible JSON loaded: {file_path}")
+                    except Exception as e:
+                        messagebox.showerror(
+                            "Error Loading Bible",
+                            f"Failed to load Bible JSON file:\n{str(e)}"
+                        )
+                        print(f"Error loading Bible JSON: {e}")
+                else:
+                    print("Invalid or no file selected. You can load a Bible later using the 'Load Bible' button.")
+            else:
+                print("No Bible loaded. You can load one later using the 'Load Bible' button.")
 
-        try:
-            # Check if bdb file exists, if not create it with proper tables
+
+        # Check if bdb file exists, if not create it with proper tables
             if bdbpath and not os.path.exists(bdbpath):
                 print(f"BDB file not found at {bdbpath}. Creating new database...")
                 # Create directory if it doesn't exist
@@ -121,7 +161,8 @@ class BibleTaggerApp:
                     f.write("")
                 bibledb_lib.makeDB(bdbpath)
                 print(f"Created new database at {bdbpath}")
-            
+
+        try:
             # Auto-migrate database if needed
             if bdbpath and os.path.exists(bdbpath):
                 current_version = bibledb_lib.get_database_version(bdbpath)
@@ -707,7 +748,7 @@ class NavigationTree:
             pass 
 
     def load_json(self, bible_file_path):
-        global bible_data
+        global bible_data, cfg, config_filename
         with open(bible_file_path, 'r') as file:
             bible_file_content = file.read()
             bible_data = bibledb_lib.getBibleData(bible_file_content)
@@ -722,6 +763,12 @@ class NavigationTree:
         self.populate_tree(bible_data, '')
         self.bta.cause_canvas_to_refresh()
         self.bta.update_tree_colors()
+        
+        # Save Bible path to config if use_last_bible is enabled
+        if cfg.getboolean('DEFAULT', 'use_last_bible', fallback=False):
+            cfg['DEFAULT']['json_path'] = bible_file_path
+            with open(config_filename, 'w') as configfile:
+                cfg.write(configfile)
     
     def load_bible(self):
         #button to open a Bible file
@@ -1850,7 +1897,7 @@ if __name__ == "__main__":
                 print(f"Missing option in [DEFAULT]: {option}")
                 valid = False
         
-        # Validate boolean values (use_last_db)
+        # Validate boolean values (use_last_db, use_last_bible)
         if cfg_check.has_option('DEFAULT', 'use_last_db'):
             try:
                 use_last_db = cfg_check.get('DEFAULT', 'use_last_db')
@@ -1860,6 +1907,17 @@ if __name__ == "__main__":
                     valid = False
             except Exception as e:
                 print(f"Error validating use_last_db: {e}")
+                valid = False
+        
+        if cfg_check.has_option('DEFAULT', 'use_last_bible'):
+            try:
+                use_last_bible = cfg_check.get('DEFAULT', 'use_last_bible')
+                if use_last_bible.strip() and use_last_bible.lower() not in ['true', 'false', '1', '0', 'yes', 'no']:
+                    print(f"Invalid boolean value for use_last_bible: '{use_last_bible}'")
+                    print("   Expected: true, false, yes, no, 1, or 0")
+                    valid = False
+            except Exception as e:
+                print(f"Error validating use_last_bible: {e}")
                 valid = False
         
         # Check file paths if specified (warnings only, not errors)
