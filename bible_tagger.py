@@ -788,11 +788,12 @@ class NavigationTree:
         # Use DB Manager window as parent if it's open
         parent = self.bta.db_manager.top_window if hasattr(self.bta.db_manager, 'top_window') and self.bta.db_manager.top_window else self.bta.master
         file_path = filedialog.askopenfilename(parent=parent, defaultextension=".json", filetypes=[("JSON Bibles", "*.json"), ("All files", "*.*")])
-        if file_path and file_path[-5:] == '.json':
-            #print(f"Selected file: {file_path}")
-            self.load_json(file_path)
-        else:
-            print("Invalid file! It's gotta be a json file. Funny thing about this: you could use this program to make notes about any kind of JSON data which is organized in a way similar to a supported Bible JSON file.")
+        if file_path:
+            if file_path[-5:] == '.json':
+                #print(f"Selected file: {file_path}")
+                self.load_json(file_path)
+            else:
+                print("Invalid file! JSON file expected.")
 
 class ScripturePanel:
     def __init__(self, bta):
