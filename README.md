@@ -1,38 +1,60 @@
 # Bible Tagger
 
-This is a tool for generating topical Bible concordances with notes. It loads a JSON bible of your choice, and then lets you add notes and "tags" to verses or passages. If you click a tag, it'll show all the verses associated with that tag, and let you associate that tag with synonymous tags so that you get all the verses for all of those tags in one place. (e.g. maybe you made a tag called "skin disease" on a bunch of verses and another tag called "leprosy" on a bunch of other verses, and you decide you want them to actually be in the same category; you would just mark them as synonyms). You can also add notes to your tags.
+A powerful tool for generating topical Bible concordances with notes and tags. Load a JSON Bible translation, add notes and tags to verses or passages, and organize your biblical study materials.
 
-It's written in Python with TKinter, with a 3-column interface:
-- The left column is a tree for navigating books and chapters.
-- The middle column shows the text for one chapter, with vertical lines to show what verses have been annotated or tagged. You can click a verse (or shift-click to select multiple verses).
-- The right column shows the selected verse(s), any notes you've written about that verse range, and a list of tags associated with the verse.
-- There's also a popup you can open with a small variety of analysis tools for the tag/verse db
+## Key Features
 
-The columns are resizable (there's an invisible "sash" between each column that you can drag left and right).
+### Tag Management
+- Create topical tags for verses or verse ranges
+- Link synonymous tags together (e.g., "skin disease" and "leprosy") to view all related verses
+- Add notes to both verses and tags
+- View all verses associated with a tag in one place
 
-Bible_Tagger outputs a SQLite database with the following tables:
-verses(), tags(), notes(), verse_tags(), verse_notes(), tag_notes(), tag_tags().
+### Interface
+Bible Tagger uses a 3-column resizable TKinter interface:
+- **Left Column**: Tree navigation for books and chapters
+- **Middle Column**: Chapter text with visual indicators (vertical lines) showing which verses have notes or tags. Click verses individually or Shift-click to select ranges. Footnotes and cross-references appear below the chapter text.
+- **Right Column**: Displays selected verse(s), related verses, associated notes, and tag list
+- **DB Manager Window**: Access database analysis tools, merge databases, download new Bible translations
+
+### Bible Features
+- **Footnotes**: Hover over underlined verse numbers to see footnotes (if available in translation)
+- **Cross-References**: View translation-provided cickable cross-references at the bottom of each chapter
+- **Multiple Translations**: Switch between different Bible versions
+- **Download Translations**: Built-in Bible downloader supporting most of the common english versions (ESV, NIV, NASB, KJV, etc.)
+
+### Database Features
+- SQLite-based storage with automatic version migration
+- Merge multiple databases together
+- Export analysis to Excel format
+- Backup and restore functionality
+
+## Database
+
+Bible Tagger stores all your tags, notes, and verse annotations in a SQLite database (.bdb files). The database automatically migrates to newer versions when needed, creating backups before migration.
 
 ### The Main window
 
-![image info](Screenshots/Screenshot5.png)
+![image info](Screenshots/main_window.png)
 
 ### The DB Analysis window
 
-![image info](Screenshots/Screenshot8.png)
+![image info](Screenshots/db_manager.png)
 
 ### Contents of the dropdown list for analysis exports
 
-![image info](Screenshots/Screenshot9.png)
+![image info](Screenshots/analysis_export.png)
 
 ## External Dependencies
 
-I programmed this around the output of SWORD-to-JSON. Here's the link to that: https://github.com/wasdin/SWORD-to-JSON . A copy of it (which I had to modify to make it work for me) is included in here. 
+### Bible Data Format
+Bible Tagger uses JSON-formatted Bible translations. On first time use you can open the DB manager to download a version to use.
 
-## Known Bugs:
-- If you create a DB while you have a weird Bible open (e.g. one with the Apocrypha included), and then open the same DB later with a normal bible, the books will all be indexed wrong, which can result in out-of-range errors. This problem won't manifest the same way with verses that include ranges where verse numbers are omitted (e.g. kjv vs niv), but may affect instances where a tag links to a single verse that is omitted, or the last verse in a chapter where a single verse has been omitted (idk).
+## Known Issues
 
-## Wanted Items
+- **Cross-Translation Compatibility**: If you create a database with a Bible that includes additional books (e.g., Apocrypha) and later open it with a standard Bible, book indexing may cause errors. This can also affect translations with missing verses (e.g., KJV vs NIV).
+
+## Future Enhancements
 
 - Need universally unique way to identify book/chapter/verse across translations and even languages
     - Make verse references in the DB more explicit so that the tool will accommodate switching between translations with missing verses
@@ -42,17 +64,18 @@ I programmed this around the output of SWORD-to-JSON. Here's the link to that: h
 
 # Getting Started
 
-### Modules Needed
+### Required Packages
+- `tkinter` - GUI framework (usually included with Python)
+- `openpyxl` - Excel file generation
+- `numpy` - Numerical operations for analysis
+- `networkx` - Graph analysis for tag relationships
+- `matplotlib` - Visualization for analysis exports
+- `configparser` - Configuration file handling
+- `beautifulsoup4` - HTML parsing for Bible downloads
+- `requests` - HTTP requests for Bible downloads
+- `json` - JSON handling library
 
-- openpyxl
-- numpy
-- networkx
-- matplotlib
-- configparser
-- beautifulsoup4
-- requests
-
-### Setup DB and JSON Files
+### Running
 
 1) Rename the config template (it should be config.cfg)
 2) Run bible_tagger.py
