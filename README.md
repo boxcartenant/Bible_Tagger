@@ -45,7 +45,6 @@ I programmed this around the output of SWORD-to-JSON. Here's the link to that: h
 
 ### Modules Needed
 
-- pysword
 - openpyxl
 - numpy
 - networkx
