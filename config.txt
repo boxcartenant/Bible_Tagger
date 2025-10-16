@@ -1,6 +1,0 @@
-C:/Users/Me/My Stuff/Bible Tagger/LSB.json
-C:/Users/Me/My Stuff/Bible Tagger/MyDB.bdb
-
-If you include a file named config.txt in the same folder as your program, it will find the file and search it for lines ending in .json and .bdb. If it finds lines like that, it will read them as file paths and attempt to automatically load your json and bdb, so you don't have to browse for them all the time. 
-
-Other than those two lines, I think it doesn't matter what else is in the config file.
