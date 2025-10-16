@@ -531,36 +531,44 @@ class BibleTaggerApp:
     def cause_canvas_to_refresh(self):
         self.scripture_panel.display_chapter()
     
-    def options_callback(self, data, scrollreset = False):
-        #this is used when you are looking at tag xref data and you click a verse associated with the tag.
-        #causes the tree and canvas to navigate to the verse you clicked.
-        #data = (startverse, endverse)
+    def change_bookchapter(self, data):
+        """
+        Navigate to a book/chapter and select verse(s) without updating TaggerPanel.
+        This is for navigation without triggering display_attributes (useful for history navigation).
+        data = (startverse, endverse) tuple of verse references
+        """
         start = bibledb_lib.parseVerseReference(data[0])
         end = bibledb_lib.parseVerseReference(data[1])
-
-        checkbook = self.scripture_panel.selected_start_b #capture this, so we won't reset the canvas view if we're not moving chapters.
         
-        self.scripture_panel.selected_start_b = bibledb_lib.book_proper_names[start['sb']]
-        self.scripture_panel.selected_end_b = bibledb_lib.book_proper_names[end['eb']]
+        # Check if parsing failed
+        if start is None or end is None:
+            print(f"Error: Could not parse verse references: start='{data[0]}', end='{data[1]}'")
+            return
+        
+        # Update scripture panel selection
+        self.scripture_panel.selected_start_b = bibledb_lib.getBookNameByIndex(start['sb'])
+        self.scripture_panel.selected_end_b = bibledb_lib.getBookNameByIndex(end['eb'])
         self.scripture_panel.selected_start_c = start['sc']
         self.scripture_panel.selected_end_c = end['ec']
         self.scripture_panel.selected_start_v = start['sv']
         self.scripture_panel.selected_end_v = end['ev']
-
-        #navigate to the first verse in the range
-        navtreedata = "/"+bibledb_lib.book_proper_names[start['sb']]+"/Ch "+start['sc']
         
-        #if not scrollreset:
-            #Sometimes if you are clicking a verse in tag data for a chapter you already have open, you'll already be looking at that verse
-            # and have scrolled to a place you want. In that case, maybe you don't want it to reset....
-            #scrollreset = checkbook != self.scripture_panel.selected_start_b
-        #self.navigation_tree.select_item(navtreedata, scrollreset)
-        self.navigation_tree.select_item(navtreedata, True) #changed this to "true" so it will always jump to the selected verse.
+        # Navigate to the first verse in the range
+        navtreedata = "/" + bibledb_lib.getBookNameByIndex(start['sb']) + "/Ch " + start['sc']
+        self.navigation_tree.select_item(navtreedata, True)
+    
+    def options_callback(self, data, scrollreset = False):
+        """
+        Navigate to a verse and update TaggerPanel to show verse details.
+        This is used when you click a verse in tag xref data.
+        data = (startverse, endverse) tuple of verse references
+        """
+        # Navigate to the chapter and select verse(s)
+        self.change_bookchapter(data)
         
+        # Update TaggerPanel to show the verse
         self.tagger_panel.display_attributes("verseClick", {"verse": "This part of the code was never implemented", "ref": combineVRefs(data[0],data[1])}, False)
         self.tagger_panel.reset_scrollregion(None)
-        #self.scripture_panel.display_chapter(reset_scrollbar = True)
-        #self.scripture_panel.reset_scrollregion()
         
     def db_explorer_callback(self, clickdata = None, item = "tagClick"):
         #this function will either focus a tag or a verse, depending on what was clicked in the secondary window
@@ -604,6 +612,21 @@ class History:
         # Can go forward if we have history and we're not at the end
         # This includes going from -1 (no verse) to 0 (first verse)
         return len(self.navigation_history) > 0 and self.navigation_index < len(self.navigation_history) - 1
+    
+    def peek_back(self):
+        """Peek at the previous history item without changing state"""
+        if self.can_go_back():
+            prev_index = self.navigation_index - 1
+            if prev_index >= 0:
+                return self.navigation_history[prev_index]
+        return None, None
+
+    def peek_forward(self):
+        """Peek at the next history item without changing state"""
+        if self.can_go_forward():
+            next_index = self.navigation_index + 1
+            return self.navigation_history[next_index]
+        return None, None
 
     def go_back(self):
         """Navigate backward in history"""
@@ -815,7 +838,7 @@ class NavigationTree:
             try:
                 # Parse the reference to get book and chapter
                 parsed = bibledb_lib.parseVerseReference(last_verse_ref)
-                book = bibledb_lib.book_proper_names[parsed['sb']]
+                book = bibledb_lib.getBookNameByIndex(parsed['sb'])
                 chapter = parsed['sc']
                 navtreedata = f"/{book}/Ch {chapter}"
                 
@@ -830,7 +853,6 @@ class NavigationTree:
                 print(f"Error navigating to verse: {e}")
                 self.bta.cause_canvas_to_refresh()
         else:
-            print("No verse found in history, just refreshing canvas")
             # No verse in history, just refresh the canvas
             self.bta.cause_canvas_to_refresh()
         
@@ -1041,51 +1063,51 @@ class ScripturePanel:
             
             #set selected chapters in order
             if bb > sb:
-                self.selected_end_b = bibledb_lib.book_proper_names[bb]
+                self.selected_end_b = bibledb_lib.getBookNameByIndex(bb)
                 eb = bb
                 self.selected_end_c = cc
                 self.selected_end_v = vv
             elif bb < sb:
-                self.selected_end_b = bibledb_lib.book_proper_names[sb]
+                self.selected_end_b = bibledb_lib.getBookNameByIndex(sb)
                 eb = sb
-                self.selected_start_b = bibledb_lib.book_proper_names[bb]
+                self.selected_start_b = bibledb_lib.getBookNameByIndex(bb)
                 sb = bb
                 self.selected_end_c = self.selected_start_c
                 self.selected_start_c = cc
                 self.selected_end_v = self.selected_start_v
                 self.selected_start_v = vv
             else: #same book
-                self.selected_start_b = bibledb_lib.book_proper_names[bb]
+                self.selected_start_b = bibledb_lib.getBookNameByIndex(bb)
                 sb = bb
-                self.selected_end_b = bibledb_lib.book_proper_names[bb]
+                self.selected_end_b = bibledb_lib.getBookNameByIndex(bb)
                 eb = bb
             if sb == eb:
                 if int(cc) > int(self.selected_start_c):
                     #print("new chapter is greater than old chapter")
-                    self.selected_end_c = cc
-                    self.selected_end_v = vv
-                elif cc < self.selected_start_c:
+                    self.selected_end_c = str(cc)
+                    self.selected_end_v = str(vv)
+                elif int(cc) < int(self.selected_start_c):
                     self.selected_end_c = self.selected_start_c
-                    self.selected_start_c = cc
+                    self.selected_start_c = str(cc)
                     self.selected_end_v = self.selected_start_v
-                    self.selected_start_v = vv
+                    self.selected_start_v = str(vv)
                 else:#same chapter
-                    self.selected_end_c = cc
-                    self.selected_start_c = cc
+                    self.selected_end_c = str(cc)
+                    self.selected_start_c = str(cc)
             #if the chapter hasn't changed, just do the verses:
                 if self.selected_end_c == self.selected_start_c:
-                    if vv > self.selected_start_v:
-                        self.selected_end_v = vv
+                    if int(vv) > int(self.selected_start_v):
+                        self.selected_end_v = str(vv)
                     else:
                         self.selected_end_v = self.selected_start_v
-                        self.selected_start_v = vv
+                        self.selected_start_v = str(vv)
         else:
-            self.selected_start_b = bibledb_lib.book_proper_names[bb]
-            self.selected_end_b = bibledb_lib.book_proper_names[bb]
-            self.selected_start_v = vv
-            self.selected_end_v = vv
-            self.selected_start_c = cc
-            self.selected_end_c = cc
+            self.selected_start_b = bibledb_lib.getBookNameByIndex(bb)
+            self.selected_end_b = bibledb_lib.getBookNameByIndex(bb)
+            self.selected_start_v = str(vv)
+            self.selected_end_v = str(vv)
+            self.selected_start_c = str(cc)
+            self.selected_end_c = str(cc)
         self.display_chapter()
         #self.display_chapter()
         #print(f"Text clicked: {clicked_text}")
@@ -1874,10 +1896,10 @@ class TaggerPanel:
                 
                 #try:
                     # If the user makes a DB using a version of the Bible that has the apocrypha, and then tries to pull notes about Revelation from that DB while he has a protestant Bible loaded...
-                    #    then the reference to bibledb_lib.book_proper_names[] will throw an index out of range error.
+                    #    then the reference to getBookNameByIndex will return None if book index is out of range.
                     #    I am making this tool primarily for myself to use, and I don't include the apocrypha in my Bible, so I don't plan to fix this.
                 verses.sort(key=lambda r: (r["start_book"], r["start_chapter"], r["start_verse"]))
-                self.verse_xref_list = [(bibledb_lib.book_proper_names[x["start_book"]]+" "+str(x["start_chapter"])+":"+str(x["start_verse"]), bibledb_lib.book_proper_names[x["end_book"]]+" "+str(x["end_chapter"])+":"+str(x["end_verse"])) for x in verses]
+                self.verse_xref_list = [(bibledb_lib.getBookNameByIndex(x["start_book"])+" "+str(x["start_chapter"])+":"+str(x["start_verse"]), bibledb_lib.getBookNameByIndex(x["end_book"])+" "+str(x["end_chapter"])+":"+str(x["end_verse"])) for x in verses]
                 #except:
                     #self.verse_xref_list = []
                     #print("Failed to get the verse references for that tag. This error might occur if your DB was made with a version of the Bible that had different books from the version you're currently using. For example, if the DB was made including the apocrypha, but your current Bible doesn't have it.")
@@ -1907,16 +1929,51 @@ class TaggerPanel:
         
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
 
-    
+    def check_history_chapter(self, item, data):
+        # returns None if no change to chapter is needed, otherwise returns the value to pass to change_bookchapter()
+        if item == "verseClick" and data and 'ref' in data:
+            ref = data['ref']
+            # The ref is already in a format that can be passed directly to change_bookchapter
+            # combineVRefs creates refs like "Genesis 1:20-24" or "Genesis 1:20"
+            # We just need to pass it as-is, not split it
+            # change_bookchapter expects a tuple of (start_verse_ref, end_verse_ref)
+            # but we stored the combined format, so we need to convert it back
+            
+            # Parse the combined reference using parseVerseReference which handles ranges
+            parsed = bibledb_lib.parseVerseReference(ref)
+            if parsed is None:
+                print(f"check_history_chapter: Could not parse ref={ref}")
+                return None
+            
+            # Reconstruct the start and end verse references
+            start_book = bibledb_lib.getBookNameByIndex(parsed['sb'])
+            end_book = bibledb_lib.getBookNameByIndex(parsed['eb'])
+            
+            if start_book is None or end_book is None:
+                print(f"check_history_chapter: Invalid book indices sb={parsed['sb']}, eb={parsed['eb']}")
+                return None
+            
+            start_ref = f"{start_book} {parsed['sc']}:{parsed['sv']}"
+            end_ref = f"{end_book} {parsed['ec']}:{parsed['ev']}"
+            
+            return (start_ref, end_ref)
+        return None
+
     def go_back(self, _):
         """Navigate backward in history"""
         if self.bta.history.can_go_back():
+            chapter_change = self.check_history_chapter(*self.bta.history.peek_back())
+            if chapter_change:
+                self.bta.change_bookchapter(chapter_change)
             self.display_attributes("history", {"direction": "backward"}, False)
             self.reset_scrollregion(None)
     
     def go_forward(self, _):
         """Navigate forward in history"""
         if self.bta.history.can_go_forward():
+            chapter_change = self.check_history_chapter(*self.bta.history.peek_forward())
+            if chapter_change:
+                self.bta.change_bookchapter(chapter_change)
             self.display_attributes("history", {"direction": "forward"}, False)
             self.reset_scrollregion(None)
     
@@ -2320,9 +2377,42 @@ if __name__ == "__main__":
         sys.exit(0 if success else 1)
     elif args.command == "scrape":
         print(f"Scraping Bible version: {args.version}")
-        print("\nScraping not yet implemented.")
-        print("\nThis feature will allow you to scrape Bible translations from online sources")
-        print("and convert them to JSON format for use with Bible Tagger.")
-        print("\nFor now, you can use the SWORD-to-JSON converter in the project folder.")
-        sys.exit(1)
+        print("This will download the Bible text from a website.")
+        print("This may take up to 30 minutes so that the website doesn't block requests.\n")
+        
+        try:
+            # Import the bible scraper
+            sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'bible_scraper'))
+            import bible_scraper
+            
+            # Get template path
+            template_path = os.path.join(os.path.dirname(__file__), 'bible_scraper', 'version_template.json')
+            
+            if not os.path.exists(template_path):
+                print(f"Error: Template file not found: {template_path}")
+                print("The version_template.json file is required for scraping.")
+                sys.exit(1)
+            
+            # Create scraper and download
+            print("Initializing scraper...")
+            scraper = bible_scraper.BibleScraper(args.version, template_path)
+            
+            print("Downloading Bible text...")
+            bible_data = scraper.scrape_bible()
+            
+            # Save to file
+            output_path = os.path.join(os.path.dirname(__file__), 'bibles', f'{args.version.upper()}.json')
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            
+            print(f"Saving to {output_path}...")
+            import json
+            with open(output_path, 'w', encoding='utf-8') as f:
+                json.dump(bible_data, f, ensure_ascii=False, indent=2)
+            
+            print(f"\nBible successfully scraped and saved to {output_path}")
+            sys.exit(0)
+            
+        except Exception as e:
+            print(f"\nError scraping Bible: {str(e)}")
+            sys.exit(1)
 

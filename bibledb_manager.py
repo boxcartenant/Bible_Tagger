@@ -4,6 +4,8 @@ import bibledb_lib as bdblib
 from tkinter.font import Font
 from openpyxl import Workbook
 import os
+import sys
+import threading
 from collections import defaultdict, deque
 import numpy as np
 import numpy as np
@@ -39,7 +41,7 @@ def combineVRefs(vref1, vref2):
         print("vref2 =", vref2)
         return vref1
     if bA != bB: #different book
-        if bdblib.book_proper_names.index(bA) < bdblib.book_proper_names.index(bB):
+        if bdblib.getBookIndex(bA) < bdblib.getBookIndex(bB):
             return(bA+" "+cA + ":" + vA + " - " + bB + " " +cB + ":" + vB)
         else:
             return(bB+" "+cB + ":" + vB + " - " + bA + " " +cA + ":" + vA)
@@ -359,6 +361,160 @@ class DBManager:
             if self.top_window:
                 self.top_window.lift()
 
+    def download_bible(self):
+        """Show dialog to download Bible from website"""
+        # Create custom dialog
+        dialog = tk.Toplevel(self.master)
+        dialog.title("Download Bible")
+        dialog.geometry("500x250")
+        dialog.transient(self.top_window if self.top_window else self.master)
+        dialog.grab_set()
+        
+        # Message
+        message = (
+            "This program will download Bible text from a popular bible website.\n\n"
+            "This process may take up to 30 minutes so that the website doesn't block requests.\n\n"
+            "Please enter the translation shortname below (e.g., ESV, NASB1995, NKJV):"
+        )
+        
+        label = tk.Label(dialog, text=message, justify=tk.LEFT, padx=20, pady=20)
+        label.pack()
+        
+        # Input frame
+        input_frame = ttk.Frame(dialog)
+        input_frame.pack(pady=10)
+        
+        ttk.Label(input_frame, text="Translation:").grid(row=0, column=0, padx=5)
+        translation_entry = ttk.Entry(input_frame, width=20)
+        translation_entry.grid(row=0, column=1, padx=5)
+        translation_entry.focus()
+        
+        # Button frame
+        button_frame = ttk.Frame(dialog)
+        button_frame.pack(pady=10)
+        
+        result = {'action': None, 'translation': None}
+        
+        def on_ok():
+            translation = translation_entry.get().strip()
+            if not translation:
+                messagebox.showwarning("Invalid Input", "Please enter a translation shortname.")
+                dialog.lift()
+                return
+            result['action'] = 'ok'
+            result['translation'] = translation
+            dialog.destroy()
+        
+        def on_cancel():
+            result['action'] = 'cancel'
+            dialog.destroy()
+        
+        # Bind Enter key to OK
+        translation_entry.bind('<Return>', lambda e: on_ok())
+        
+        tk.Button(button_frame, text="OK", command=on_ok, width=15).grid(row=0, column=0, padx=5)
+        tk.Button(button_frame, text="Cancel", command=on_cancel, width=15).grid(row=0, column=1, padx=5)
+        
+        # Center the dialog
+        dialog.update_idletasks()
+        x = (dialog.winfo_screenwidth() // 2) - (dialog.winfo_width() // 2)
+        y = (dialog.winfo_screenheight() // 2) - (dialog.winfo_height() // 2)
+        dialog.geometry(f"+{x}+{y}")
+        
+        # Wait for dialog to close
+        dialog.wait_window()
+        
+        # Process the result
+        if result['action'] != 'ok' or not result['translation']:
+            if self.top_window:
+                self.top_window.lift()
+            return
+        
+        # Show progress dialog and start download
+        self.show_download_progress(result['translation'])
+
+    def show_download_progress(self, translation):
+        """Show progress bar while downloading Bible"""
+        # Create progress dialog
+        progress_dialog = tk.Toplevel(self.master)
+        progress_dialog.title("Downloading Bible")
+        progress_dialog.geometry("400x150")
+        progress_dialog.transient(self.top_window if self.top_window else self.master)
+        progress_dialog.grab_set()
+        
+        # Progress message
+        progress_label = tk.Label(progress_dialog, text=f"Downloading {translation}...", 
+                                  font=('TkDefaultFont', 10, 'bold'), pady=20)
+        progress_label.pack()
+        
+        # Progress bar
+        progress_var = tk.DoubleVar()
+        progress_bar = ttk.Progressbar(progress_dialog, variable=progress_var, 
+                                       maximum=100, length=300, mode='indeterminate')
+        progress_bar.pack(pady=10)
+        progress_bar.start(10)
+        
+        # Status label
+        status_label = tk.Label(progress_dialog, text="Downloading...", pady=10)
+        status_label.pack()
+        
+        # Center the dialog
+        progress_dialog.update_idletasks()
+        x = (progress_dialog.winfo_screenwidth() // 2) - (progress_dialog.winfo_width() // 2)
+        y = (progress_dialog.winfo_screenheight() // 2) - (progress_dialog.winfo_height() // 2)
+        progress_dialog.geometry(f"+{x}+{y}")
+        
+        # Run download in separate thread
+        def run_download():
+            try:
+                # Import the bible scraper
+                sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'bible_scraper'))
+                from bible_scraper.bible_scraper import BibleScraper
+                
+                # Get template path
+                template_path = os.path.join(os.path.dirname(__file__), 'bible_scraper', 'version_template.json')
+                
+                # Create scraper and download
+                scraper = BibleScraper(translation, template_path)
+                bible_data = scraper.scrape_bible()
+                
+                # Save to file
+                output_path = os.path.join(os.path.dirname(__file__), 'bibles', f'{translation.upper()}.json')
+                os.makedirs(os.path.dirname(output_path), exist_ok=True)
+                
+                import json
+                with open(output_path, 'w', encoding='utf-8') as f:
+                    json.dump(bible_data, f, ensure_ascii=False, indent=2)
+                
+                # Update UI on main thread
+                progress_dialog.after(0, lambda: download_complete(output_path))
+                
+            except Exception as e:
+                # Show error on main thread
+                progress_dialog.after(0, lambda: download_failed(str(e)))
+        
+        def download_complete(output_path):
+            progress_bar.stop()
+            progress_dialog.destroy()
+            messagebox.showinfo("Download Complete", 
+                              f"Bible successfully downloaded to:\n{output_path}")
+            if self.top_window:
+                self.top_window.lift()
+            # Update the bible label
+            self.update_bible_label(output_path)
+        
+        def download_failed(error_msg):
+            progress_bar.stop()
+            progress_dialog.destroy()
+            messagebox.showerror("Download Failed", 
+                               f"Failed to download Bible:\n\n{error_msg}")
+            if self.top_window:
+                self.top_window.lift()
+        
+        # Start download thread
+        download_thread = threading.Thread(target=run_download, daemon=True)
+        download_thread.start()
+
 
     def populate(self):
         #I am accustomed to dealing with paned windows
@@ -395,21 +551,23 @@ class DBManager:
         # Add DB management buttons
         tk.Button(button_container, text="Load Bible", 
                   command=self.load_bible_callback).grid(row=2, column=0, sticky="ew", padx=2, pady=2)
+        tk.Button(button_container, text="Download Bible", 
+                  command=self.download_bible).grid(row=3, column=0, sticky="ew", padx=2, pady=2)
         tk.Button(button_container, text="Load DB", 
-                  command=self.load_db_callback).grid(row=3, column=0, sticky="ew", padx=2, pady=2)
+                  command=self.load_db_callback).grid(row=4, column=0, sticky="ew", padx=2, pady=2)
         tk.Button(button_container, text="Save DB As", 
-                  command=self.save_db_as_callback).grid(row=4, column=0, sticky="ew", padx=2, pady=2)
+                  command=self.save_db_as_callback).grid(row=5, column=0, sticky="ew", padx=2, pady=2)
         tk.Button(button_container, text="New DB", 
-                  command=self.new_db_callback).grid(row=5, column=0, sticky="ew", padx=2, pady=2)
+                  command=self.new_db_callback).grid(row=6, column=0, sticky="ew", padx=2, pady=2)
         tk.Button(button_container, text="Merge DBs", 
-                  command=self.merge_dbs_callback).grid(row=6, column=0, sticky="ew", padx=2, pady=2)
+                  command=self.merge_dbs_callback).grid(row=7, column=0, sticky="ew", padx=2, pady=2)
         tk.Button(button_container, text="Backup DB", 
-                  command=self.backup_db_callback).grid(row=7, column=0, sticky="ew", padx=2, pady=2)
+                  command=self.backup_db_callback).grid(row=8, column=0, sticky="ew", padx=2, pady=2)
         tk.Button(button_container, text="Cleanup DB", 
-                  command=self.cleanup_db).grid(row=8, column=0, sticky="ew", padx=2, pady=2)
+                  command=self.cleanup_db).grid(row=9, column=0, sticky="ew", padx=2, pady=2)
         
         # Configure button width
-        for i in range(9):
+        for i in range(10):
             button_container.grid_rowconfigure(i, weight=0)
         button_container.grid_columnconfigure(0, weight=1, minsize=100)
         
@@ -851,12 +1009,21 @@ class VerseSortingPanel(ttk.Frame):
         #self.canvas.create_text(10, 10, anchor="nw", text="Right-hand canvas content")
 
     def get_books_like(self, dbdata, partial_book):
-        result = [book for book in bdblib.book_proper_names if partial_book.lower().strip() in book.lower().strip()]
+        # Get all book names from the loaded Bible
+        all_books = []
+        if bdblib.bible_json_data and "books" in bdblib.bible_json_data:
+            for book in bdblib.bible_json_data["books"]:
+                if "names" in book and len(book["names"]) > 0:
+                    all_books.append(book["names"][0])
+                elif "book" in book:
+                    all_books.append(book["book"])
+        result = [book for book in all_books if partial_book.lower().strip() in book.lower().strip()]
         return result
     
     def select_book(self, event):
         selected_book = TagInputDialog(self.master, self.dbdata, topselection = True, get_tags_like = self.get_books_like, thistitle = "Select Books", bookinputdialog = True).selected_tag
-        if (selected_book is not None) and (selected_book != "") and (selected_book in bdblib.book_proper_names) and (selected_book not in self.selected_books):
+        # Check if book exists in the loaded Bible
+        if (selected_book is not None) and (selected_book != "") and (bdblib.getBookIndex(selected_book) >= 0) and (selected_book not in self.selected_books):
             self.selected_books.append(selected_book)
             self.display_attributes()
 
@@ -1708,7 +1875,9 @@ class VerseSortingPanel(ttk.Frame):
                     #eliminate all verses that aren't in the selected books
                     if (len(self.selected_books) > 0):
                         for verse in vdcopy:
-                            if (bdblib.book_proper_names[verse["start_book"]] not in bdblib.book_proper_names) and (bdblib.book_proper_names[verse["end_book"]] not in bdblib.book_proper_names):
+                            start_book_name = bdblib.getBookNameByIndex(verse["start_book"])
+                            end_book_name = bdblib.getBookNameByIndex(verse["end_book"])
+                            if (start_book_name not in self.selected_books) and (end_book_name not in self.selected_books):
                                 vd.remove(verse)
                         vdcopy = vd.copy() #remake vdcopy for the next filter
 
@@ -1986,11 +2155,11 @@ class VerseSortingPanel(ttk.Frame):
             
             try:
                 # If the user makes a DB using a version of the Bible that has the apocrypha, and then tries to pull notes about Revelation from that DB while he has a protestant Bible loaded...
-                #    then the reference to bdblib_Lib.book_proper_names[] will throw an index out of range error.
+                #    then getBookNameByIndex will return None if book index is out of range.
                 #    I am making this tool primarily for myself to use, and I don't include the apocrypha in my Bible, so I don't plan to fix this.
                 
                 verses.sort(key=lambda r: (r[0], r[1], r[2]))#sort by start book first, then chapter, then verse, so all the verses appear in order
-                self.verse_xref_list = [(bdblib.book_proper_names[q[0]]+" "+str(q[1])+":"+str(q[2]), bdblib.book_proper_names[q[3]]+" "+str(q[4])+":"+str(q[5])) for q in verses]
+                self.verse_xref_list = [(bdblib.getBookNameByIndex(q[0])+" "+str(q[1])+":"+str(q[2]), bdblib.getBookNameByIndex(q[3])+" "+str(q[4])+":"+str(q[5])) for q in verses]
             except:
                 self.verse_xref_list = []
                 print("Failed to get the verse references for that tag. This error might occur if your DB was made with a version of the Bible that had different books from the version you're currently using. For example, if the DB was made including the apocrypha, but your current Bible doesn't have it.")

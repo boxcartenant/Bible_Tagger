@@ -36,7 +36,6 @@ I programmed this around the output of SWORD-to-JSON. Here's the link to that: h
 
 - Need universally unique way to identify book/chapter/verse across translations and even languages
     - Make verse references in the DB more explicit so that the tool will accommodate switching between translations with missing verses
-- CLI Scrape command
 - History smart replace
     - Clicking a single verse, adding or deleting a tag or editing a note, then shift-clicking another verse keeps both. eg. Genesis 1:1 -> Genesis 1:1-5
     - Clicking a single, not doing anything with it and then shift-clicking another replaces it in the history. Only Genesis 1:1-5 should be in history
@@ -45,12 +44,13 @@ I programmed this around the output of SWORD-to-JSON. Here's the link to that: h
 
 ### Modules Needed
 
-- pysword
 - openpyxl
 - numpy
 - networkx
 - matplotlib
 - configparser
+- beautifulsoup4
+- requests
 
 ### Setup DB and JSON Files
 
@@ -62,4 +62,4 @@ I programmed this around the output of SWORD-to-JSON. Here's the link to that: h
     1) Downloading a bible requires the version name (e.g. ESV)
     2) This process takes some time, like 10 minutes.
     3) After scraping is done, resolve any translation discrepancies
-    4) Select Load Bible afterwards, it should be named bible_VER.json, where VER is the version name
+    4) Select Load Bible afterwards, it should be named VER.json, where VER is the version name
