@@ -1065,17 +1065,17 @@ class ScripturePanel:
             if bb > sb:
                 self.selected_end_b = bibledb_lib.getBookNameByIndex(bb)
                 eb = bb
-                self.selected_end_c = cc
-                self.selected_end_v = vv
+                self.selected_end_c = str(cc)
+                self.selected_end_v = str(vv)
             elif bb < sb:
                 self.selected_end_b = bibledb_lib.getBookNameByIndex(sb)
                 eb = sb
                 self.selected_start_b = bibledb_lib.getBookNameByIndex(bb)
                 sb = bb
                 self.selected_end_c = self.selected_start_c
-                self.selected_start_c = cc
+                self.selected_start_c = str(cc)
                 self.selected_end_v = self.selected_start_v
-                self.selected_start_v = vv
+                self.selected_start_v = str(vv)
             else: #same book
                 self.selected_start_b = bibledb_lib.getBookNameByIndex(bb)
                 sb = bb
@@ -2381,9 +2381,8 @@ if __name__ == "__main__":
         print("This may take up to 30 minutes so that the website doesn't block requests.\n")
         
         try:
-            # Import the bible scraper
-            sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'bible_scraper'))
-            import bible_scraper
+            # Import the bible scraper directly from the module
+            from bible_scraper.bible_scraper import BibleScraper
             
             # Get template path
             template_path = os.path.join(os.path.dirname(__file__), 'bible_scraper', 'version_template.json')
@@ -2395,7 +2394,7 @@ if __name__ == "__main__":
             
             # Create scraper and download
             print("Initializing scraper...")
-            scraper = bible_scraper.BibleScraper(args.version, template_path)
+            scraper = BibleScraper(args.version, template_path)
             
             print("Downloading Bible text...")
             bible_data = scraper.scrape_bible()

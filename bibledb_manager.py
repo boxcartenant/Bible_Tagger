@@ -467,8 +467,7 @@ class DBManager:
         # Run download in separate thread
         def run_download():
             try:
-                # Import the bible scraper
-                sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'bible_scraper'))
+                # Import the bible scraper directly from the module
                 from bible_scraper.bible_scraper import BibleScraper
                 
                 # Get template path
@@ -490,8 +489,10 @@ class DBManager:
                 progress_dialog.after(0, lambda: download_complete(output_path))
                 
             except Exception as e:
+                # Capture exception message before leaving scope
+                error_msg = str(e)
                 # Show error on main thread
-                progress_dialog.after(0, lambda: download_failed(str(e)))
+                progress_dialog.after(0, lambda msg=error_msg: download_failed(msg))
         
         def download_complete(output_path):
             progress_bar.stop()

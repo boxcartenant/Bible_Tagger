@@ -1,4 +1,3 @@
-import argparse
 import json
 import os
 import time
@@ -8,11 +7,8 @@ import logging
 from typing import Dict, List, Any
 import re
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+# Create a logger for this module
+logger = logging.getLogger(__name__)
 
 def normalize_quotes(text: str) -> str:
     """Normalize smart quotes to standard quotes."""
@@ -165,7 +161,7 @@ class BibleScraper:
             }
             
         except requests.RequestException as e:
-            logging.error(f"Error fetching version info: {str(e)}")
+            logger.error(f"Error fetching version info: {str(e)}")
             raise ValueError(f"Failed to fetch Bible version '{self.version}': {str(e)}") from e
 
     def get_chapter_content(self, book: str, chapter: int) -> Dict[str, Any]:
@@ -187,41 +183,12 @@ class BibleScraper:
             # Get verses container
             passage_content = soup.find(class_='passage-content')
             if not passage_content:
-                logging.error("Could not find passage-content")
+                logger.error("Could not find passage-content")
                 return []
                 
             # Debug HTML structure
-            #logging.debug(f"HTML structure:\n{passage_content.prettify()}")
-            
-            # Get verses container - try different class names
-            verses_container = passage_content.find(class_='text-html') or passage_content
-                
-            # Find all footnotes and cross references for lookup
-            footnotes = {}
-            footnotes_div = soup.find('div', class_='footnotes')
-            if footnotes_div:
-                for fn in footnotes_div.find_all('li'):
-                    fn_id = fn.get('id')
-                    if fn_id and fn_id.startswith('fen-'):
-                        text_span = fn.find('span', {'class': 'footnote-text'})
-                        if text_span:
-                                footnotes[fn_id] = text_span.get_text(strip=True)
-            
-            cross_refs = {}
-            crossrefs_div = soup.find('div', class_='crossrefs')
-            if crossrefs_div:
-                for cr in crossrefs_div.find_all('li'):
-                    cr_id = cr.get('id')
-                    if cr_id and cr_id.startswith('cen-'):
-                        ref_links = cr.find_all('a', {'class': 'crossref-link'})
-                        refs = []
-                        for link in ref_links:
-                            bibleref = link.get('data-bibleref')
-                            if bibleref:
-                                refs.extend(parse_bible_reference(bibleref))
-                        if refs:
-                            cross_refs[cr_id] = refs
-            
+            #logger.debug(f"HTML structure:\n{passage_content.prettify()}")
+
             # Process verses and headings
             # The .version-{version} div contains all verses in <p> tags, with <h3> for headings
             version_div = passage_content.find(class_=f'version-{self.version}')
@@ -244,10 +211,10 @@ class BibleScraper:
                 if element.name == 'p':
                     # Find all verse spans within the paragraph
                     verse_spans = element.find_all(class_='text')
-                    #logging.debug(f"Found {len(verse_spans)} verse spans in paragraph")
+                    #logger.debug(f"Found {len(verse_spans)} verse spans in paragraph")
                     for verse_span in verse_spans:
                         append = False
-                        #logging.debug(f"Verse span HTML: {verse_span.prettify()}")
+                        #logger.debug(f"Verse span HTML: {verse_span.prettify()}")
                         # Process verse text and references
                         verse_text = ''
                         verse_footnotes = []
@@ -327,12 +294,12 @@ class BibleScraper:
                         # Clean up verse text
                         verse_text = verse_text.strip()
                         if not verse_text:
-                            logging.warning(f"Empty verse text found for {book} {chapter}")
+                            logger.warning(f"Empty verse text found for {book} {chapter}")
                             continue
                             
                         # Verify we got a verse number
                         if verse_num is None:
-                            logging.error(f"No verse number found for text in {book} {chapter}: {verse_text}")
+                            logger.error(f"No verse number found for text in {book} {chapter}: {verse_text}")
                             continue
                         
                         # Join multiple footnotes with a space, or None if no footnotes
@@ -356,13 +323,13 @@ class BibleScraper:
                             verse_updates[-1]['cross_references']['refers_to'].extend(verse_cross_refs)
                             if verse_updates[-1]['heading'] is None:
                                 verse_updates[-1]['heading'] = current_heading
-                        #logging.debug(f"Verse {verse_num}: {verse_text}")
+                        #logger.debug(f"Verse {verse_num}: {verse_text}")
                         current_heading = None  # Clear heading after using it
             
             return verse_updates
             
         except requests.RequestException as e:
-            logging.error(f"Error fetching {book} {chapter}: {str(e)}")
+            logger.error(f"Error fetching {book} {chapter}: {str(e)}")
             return []
 
     def process_reverse_references(self):
@@ -412,16 +379,16 @@ class BibleScraper:
         # Scrape each chapter
         for book in self.template["books"]:
             book_name = book["book"]
-            logging.info(f"Processing {book_name}...")
+            logger.info(f"Processing {book_name}...")
             
             for chapter in book["chapters"]:
                 chapter_num = chapter["chapter"]
-                logging.debug(f"  Scraping {book_name} {chapter_num}...")
+                logger.debug(f"  Scraping {book_name} {chapter_num}...")
                 
                 # Get chapter content
                 verse_updates = self.get_chapter_content(book_name, chapter_num)
                 if verse_updates is None:
-                    logging.error(f"No verse updates returned for {book_name} {chapter_num}")
+                    logger.error(f"No verse updates returned for {book_name} {chapter_num}")
                     verse_updates = []
                     
                 # Update verses with scraped content
@@ -434,43 +401,7 @@ class BibleScraper:
                 time.sleep(1)  # Be nice to the server
 
         # Process refers_me references
-        logging.info("Processing reverse references...")
+        logger.info("Processing reverse references...")
         self.process_reverse_references()
         
         return self.template
-
-def main():
-    parser = argparse.ArgumentParser(description="Scrape Bible Gateway for Bible text and references")
-    parser.add_argument("version", help="Bible version abbreviation (e.g., ESV, NASB, NKJV)")
-    parser.add_argument("template", help="Path to the template JSON file", nargs="?", default="./version_template.json")
-    args = parser.parse_args()
-
-    scraper = BibleScraper(args.version, args.template)
-    try:
-        bible_data = scraper.scrape_bible()
-
-        output_path = f"./bibles/{args.version.upper()}.json"
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        with open(output_path, 'w', encoding='utf-8') as f:
-            json.dump(bible_data, f, ensure_ascii=False, indent=2)
-    
-        logging.info(f"Bible successfully scraped and saved to {output_path}")
-    except Exception as e:
-        logging.error(str(e))
-
-if __name__ == "__main__":
-    main()
-
-
-
-
-# citation is in a special element at bottom of page, use Genesis 1 for citation, element with @publisher-info-bottom, citation is in the <p> element inside it
-# if not found in translation name, use publication year in citation for version
-# cross references have full addresses, and might list several, and might list ranges. Genesis 1:1, Habbakuk 1:1, Habbakuk 1:3-Habbakuk 1:5
-# it is much easier than this llm thinks to parse references.
-# footnotes and cross references are embedded in the verse text: 
-# <sup class="crossreference" data-cr="<id of crossreference element>" , <sup class="footnote" data-fn="<id of footnote element>"
-# those footnote and cross reference elements are li elements
-# footnotes have a @footnote-text span inside them
-# cross references have an @crossref-link element, and that element has a data-bibleref attribute with the reference text
-# reference text is like this: Genesis 1:1, Habbakuk 1:1, Habbakuk 1:3-Habbakuk 1:5

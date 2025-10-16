@@ -334,8 +334,8 @@ def normalize_vref(passage):
     # and returns its normalized string name (Genesis 1:1-Exodus 2:2)
     vID, bA, cA, vA, bB, cB, vB = (str(n) for n in passage.values())
     
-    pA = getBookNameByIndex(int(bA))
-    pB = getBookNameByIndex(int(bB))
+    pA = getBookNameByIndex(int(bA)) or str(bA)
+    pB = getBookNameByIndex(int(bB)) or str(bB)
     if bA != bB: #different book
         if bA < bB:
             return(pA+" "+cA + ":" + vA + " - " + pB + " " +cB + ":" + vB)
