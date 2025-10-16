@@ -4,3 +4,4 @@ bibles
 __pycache__
 .vscode
 config.cfg
+logs

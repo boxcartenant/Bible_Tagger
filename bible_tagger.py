@@ -11,6 +11,10 @@ import os
 import sys
 import configparser
 import argparse
+import logging
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 textlinegap = 2
 textelbowroom = 6 #that's "elbow room" for left and right spacing
@@ -41,6 +45,7 @@ def wrapText(text, width, font):
 
 class BibleTaggerApp:
     def __init__(self, master, cli_args):
+        logger.info("Starting Bible Tagger")
         self.master = master
         global bible_data, cfg
 
@@ -114,7 +119,7 @@ class BibleTaggerApp:
                 self.navigation_tree.load_json(jsonpath)
                 bible_loaded = True
             except Exception as e:
-                print("Failed to load JSON file from config:", e)
+                logger.error(f"Failed to load JSON file from config: {e}")
                 jsonpath = None
         
         # If no Bible JSON loaded, prompt user to select one
@@ -135,28 +140,29 @@ class BibleTaggerApp:
                     filetypes=[("JSON Bibles", "*.json"), ("All files", "*.*")]
                 )
                 
-                if file_path and file_path[-5:] == '.json':
-                    try:
-                        self.navigation_tree.load_json(file_path)
-                        bible_loaded = True
-                        # Save message depends on use_last_bible setting
-                        if not cfg.getboolean('DEFAULT', 'use_last_bible', fallback=False):
-                            print(f"Bible JSON loaded: {file_path}")
-                    except Exception as e:
-                        messagebox.showerror(
-                            "Error Loading Bible",
-                            f"Failed to load Bible JSON file:\n{str(e)}"
-                        )
-                        print(f"Error loading Bible JSON: {e}")
-                else:
-                    print("Invalid or no file selected. You can load a Bible later using the 'Load Bible' button.")
+                if file_path:
+                    if file_path[-5:] == '.json':
+                        try:
+                            self.navigation_tree.load_json(file_path)
+                            bible_loaded = True
+                            # Save message depends on use_last_bible setting
+                            if not cfg.getboolean('DEFAULT', 'use_last_bible', fallback=False):
+                                logger.info(f"Bible JSON loaded: {file_path}")
+                        except Exception as e:
+                            messagebox.showerror(
+                                "Error Loading Bible",
+                                f"Failed to load Bible JSON file:\n{str(e)}"
+                            )
+                            logger.error(f"Error loading Bible JSON: {e}")
+                    else:
+                        logger.error("Invalid file selected. It must be a JSON file.")
             else:
-                print("No Bible loaded. You can load one later using the 'Load Bible' button.")
+                logger.debug("No Bible loaded.")
 
 
         # Check if bdb file exists, if not create it with proper tables
             if bdbpath and not os.path.exists(bdbpath):
-                print(f"BDB file not found at {bdbpath}. Creating new database...")
+                logger.info(f"BDB file not found at {bdbpath}. Creating new database...")
                 # Create directory if it doesn't exist
                 bdb_dir = os.path.dirname(bdbpath)
                 if bdb_dir and not os.path.exists(bdb_dir):
@@ -165,7 +171,7 @@ class BibleTaggerApp:
                 with open(bdbpath, 'w') as f:
                     f.write("")
                 bibledb_lib.makeDB(bdbpath)
-                print(f"Created new database at {bdbpath}")
+                logger.debug(f"Created new database at {bdbpath}")
 
         try:
             # Auto-migrate database if needed
@@ -192,7 +198,7 @@ class BibleTaggerApp:
                     
                     if user_choice:
                         # User chose to migrate
-                        print(f"\nMigrating database from version {current_version} to {target_version}...")
+                        logger.info(f"Migrating database from version {current_version} to {target_version}...")
                         success, backup_path = migrate_db(bdbpath, interactive=False)
                         
                         if success:
@@ -205,9 +211,9 @@ class BibleTaggerApp:
                                 success_msg += f"\nBackup saved at:\n{backup_path}"
                             
                             messagebox.showinfo("Migration Successful", success_msg)
-                            print(f"✓ Database successfully migrated to version {target_version}")
+                            logger.info(f"Database successfully migrated to version {target_version}")
                             if backup_path:
-                                print(f"✓ Backup saved at: {backup_path}")
+                                logger.debug(f"Backup saved at: {backup_path}")
                         else:
                             # Show failure dialog
                             error_msg = (
@@ -218,7 +224,7 @@ class BibleTaggerApp:
                                 error_msg += f"\nYour original database was backed up to:\n{backup_path}"
                             
                             messagebox.showerror("Migration Failed", error_msg)
-                            print(f"✗ Migration failed")
+                            logger.error("Migration failed")
                             
                             # Let user choose a different database
                             bdbpath = None
@@ -236,11 +242,11 @@ class BibleTaggerApp:
                 # If no valid database, show load dialog
                 if not self.load_db(on_startup=True):
                     # User cancelled database selection on startup, exit
-                    print("No database selected. Exiting...")
+                    logger.info("No database selected. Exiting...")
                     self.master.destroy()
                     sys.exit(0)
         except Exception as e:
-            print("Failed to load BDB file from config:", e)
+            logger.error(f"Failed to load BDB file from config: {e}")
             bdbpath = None
 
     ##### DB LOAD SAVE
@@ -268,7 +274,8 @@ class BibleTaggerApp:
             cfg['DEFAULT']['bdb_path'] = file_path
             with open(config_filename, 'w') as configfile:
                 cfg.write(configfile)
-        
+        logger.info(f"Database loaded: {file_path}")
+
     def load_db(self, on_startup=False):
         # Implement your logic to open the browse window and load the database
         # on_startup: if True and user cancels, return False to signal app should exit
@@ -301,7 +308,7 @@ class BibleTaggerApp:
                     
                     if user_choice:
                         # User chose to migrate
-                        print(f"\nMigrating database from version {current_version} to {target_version}...")
+                        logger.info(f"Migrating database from version {current_version} to {target_version}...")
                         success, backup_path = migrate_db(file_path, interactive=False)
                         
                         if success:
@@ -314,12 +321,11 @@ class BibleTaggerApp:
                                 success_msg += f"\nBackup saved at:\n{backup_path}"
                             
                             messagebox.showinfo("Migration Successful", success_msg, parent=parent)
-                            print(f"✓ Database successfully migrated to version {target_version}")
+                            logger.info(f"Database successfully migrated to version {target_version}")
                             if backup_path:
-                                print(f"✓ Backup saved at: {backup_path}")
+                                logger.debug(f"Backup saved at: {backup_path}")
                             
                             # Load the migrated database
-                            print(f"Loaded DB: {file_path}")
                             self.load_bdb(file_path)
                         else:
                             # Show failure dialog
@@ -331,18 +337,17 @@ class BibleTaggerApp:
                                 error_msg += f"\nYour original database was backed up to:\n{backup_path}"
                             
                             messagebox.showerror("Migration Failed", error_msg, parent=parent)
-                            print(f"✗ Migration failed")
+                            logger.error("Migration failed")
                             # Don't load the database, stay with current
                     else:
                         # User chose not to migrate, stay with current database
-                        print("Migration cancelled by user. Keeping current database.")
+                        logger.debug("Migration cancelled by user. Keeping current database.")
                 else:
                     # Version matches, load normally
-                    print(f"Loaded DB: {file_path}")
                     self.load_bdb(file_path)
                 return True
             else:
-                print("I'm not opening that. It's gotta be a SQLITE database file with the extension \".bdb\"")
+                logger.warning("Invalid file type. Database files must have .bdb extension")
                 return False
         else:
             # User cancelled file selection
@@ -382,7 +387,7 @@ class BibleTaggerApp:
         if file_path:
             try:
                 bibledb_lib.copy_db(open_db_file, file_path)
-                print(f"Database backed up to: {file_path}")
+                logger.info(f"Database backed up to: {file_path}")
                 return file_path
             except Exception as e:
                 messagebox.showerror("Backup Failed", f"Failed to create backup:\n{str(e)}", parent=parent)
@@ -405,7 +410,7 @@ class BibleTaggerApp:
                 bibledb_lib.copy_db(open_db_file, file_path)
             # Load the new database file (switch to it)
             self.load_bdb(file_path)
-            print(f"Database saved as: {file_path}")
+            logger.info(f"Database saved as: {file_path}")
     
     def merge_dbs(self):
         # merges a second database into current database
@@ -414,20 +419,19 @@ class BibleTaggerApp:
         file_path = filedialog.askopenfilename(parent=parent, defaultextension=".bdb", filetypes=[("Sqlite Bible Files", "*.bdb"), ("All files", "*.*")])
         if file_path:
             if file_path == open_db_file:
-                print("You can't merge a database into itself!")
+                logger.warning("Cannot merge a database into itself")
             elif not os.path.exists(file_path):
-                print("That file doesn't exist!")
+                logger.error(f"File does not exist: {file_path}")
             elif file_path[-4:] == ".bdb":
                 bibledb_lib.merge_dbs(open_db_file, file_path)
                 self.cause_canvas_to_refresh()
                 self.update_tree_colors()
             else:
-                print("I'm not opening that. It's gotta be a SQLITE database file with the extension \".bdb\"")
+                logger.error("Invalid file type. Database files must have .bdb extension")
 
     def set_active_panel(self, event):
         # Set the active panel to the widget under the mouse
         self.active_panel = event.widget
-        #print("active_panel",self.active_panel)
 
     def clear_active_panel(self, event):
         # Clear the active panel when the mouse leaves
@@ -458,7 +462,6 @@ class BibleTaggerApp:
 
     def scroll_active_panel(self, event):
         # Only scroll the active panel
-        #print("scrolling active_panel",self.active_panel)
         if self.active_panel:
             first, last = self.active_panel.yview()  # Get scrollbar position
             if event.delta > 0 and first <= 0:  # Trying to scroll up but already at the top
@@ -526,7 +529,6 @@ class BibleTaggerApp:
         # handle tree-related actions caused by canvas interactions here
         self.tagger_panel.display_attributes(item, data, shift_key)
         self.tagger_panel.reset_scrollregion(item)
-        1;
 
     def cause_canvas_to_refresh(self):
         self.scripture_panel.display_chapter()
@@ -542,7 +544,7 @@ class BibleTaggerApp:
         
         # Check if parsing failed
         if start is None or end is None:
-            print(f"Error: Could not parse verse references: start='{data[0]}', end='{data[1]}'")
+            logger.critical(f"Could not parse verse references: start='{data[0]}', end='{data[1]}'")
             return
         
         # Update scripture panel selection
@@ -696,9 +698,7 @@ class NavigationTree:
             while i < len(value):
                 tagID = item_id+"/Ch "+str(i+1)
                 chapter_id = self.tree.insert(item_id, 'end', text="Ch "+str(i+1), iid=tagID, tags=(tagID,))
-                #print(tagID)
                 self.tree_item_data[chapter_id] = value[i]  # Store the associated data
-                #TO DO: Remove the above line (self.tree_item_data[chapter_id] = value[i]) if not used
                 i += 1
 
     def recolor(self, marked_chapters):
@@ -747,8 +747,6 @@ class NavigationTree:
         
     def on_tree_item_click(self, reset_scroll_region=True, event=None):
         #select and show chapters when clicked
-        #print(reset_scroll_region)
-        #print(event)
         try: 
             item_id = self.tree.selection()[0]
             children = self.tree.get_children(item_id)
@@ -773,11 +771,10 @@ class NavigationTree:
 
             #get the data associated with that item and pass it to the canvas for display
             item_data = self.tree_item_data.get(item_id)
-            #print("sending..." + str(attributes))
             # Use the callback in the NavigationTree class to handle the canvas update
             self.bta.tree_callback(item_id, item_data, reset_scroll_region)
         except IndexError:
-            print("failed in on_tree_item_click")
+            logger.debug("Tree item click failed - likely clicked whitespace")
             #clicking white space on the list throws this error. Just don't update the item.
             pass 
 
@@ -789,8 +786,6 @@ class NavigationTree:
             with open(bible_file_path, 'r', encoding='utf-8') as file:
                 bible_file_content = file.read()
                 bible_data = bibledb_lib.getBibleData(bible_file_content)
-            #print("dumping output from open_file_dialog")
-            #print(bible_data)
         except ValueError as e:
             # Invalid schema error
             current_bible_json = None
@@ -830,7 +825,7 @@ class NavigationTree:
                 if hist_item == "verseClick" and hist_data and 'ref' in hist_data:
                     last_verse_ref = hist_data['ref']
                     last_verse_data = hist_data
-                    print(f"Found last verse in history: {last_verse_ref}")
+                    logger.debug(f"Found last verse in history: {last_verse_ref}")
                     break
         
         # If we found a verse in history, navigate to it
@@ -842,7 +837,7 @@ class NavigationTree:
                 chapter = parsed['sc']
                 navtreedata = f"/{book}/Ch {chapter}"
                 
-                print(f"Navigating to: {navtreedata}")
+                logger.debug(f"Navigating to: {navtreedata}")
                 
                 # Select the item in the tree to display the chapter
                 self.select_item(navtreedata, True)
@@ -850,7 +845,7 @@ class NavigationTree:
                 # Display the verse attributes (this will also refresh the scripture panel)
                 self.bta.tagger_panel.display_attributes("verseClick", last_verse_data, False)
             except Exception as e:
-                print(f"Error navigating to verse: {e}")
+                logger.error(f"Error navigating to verse: {e}")
                 self.bta.cause_canvas_to_refresh()
         else:
             # No verse in history, just refresh the canvas
@@ -876,10 +871,10 @@ class NavigationTree:
         file_path = filedialog.askopenfilename(parent=parent, defaultextension=".json", filetypes=[("JSON Bibles", "*.json"), ("All files", "*.*")])
         if file_path:
             if file_path[-5:] == '.json':
-                #print(f"Selected file: {file_path}")
+                logger.debug(f"Selected file: {file_path}")
                 self.load_json(file_path)
             else:
-                print("Invalid file! JSON file expected.")
+                logger.warning("Invalid file! JSON file expected.")
 
 class ScripturePanel:
     def __init__(self, bta):
@@ -1023,7 +1018,7 @@ class ScripturePanel:
             self.bta.options_callback((start_ref, end_ref), True)
             
         except Exception as e:
-            print(f"Error navigating to cross-reference: {e}")
+            logger.error(f"Error navigating to cross-reference: {e}")
         
     def on_text_click(self, event, item_id, scopename, vv):
         #item_id is the text of the selected verse
@@ -1034,11 +1029,9 @@ class ScripturePanel:
         #------Send tag data to the second window for cross referencing
         self.bta.canvas_callback("verseClick", {"verse": item_id, "ref": scopename}, event.state & (1<<0))
         
-        #print("ID:"+ str(item_id), "\nSCOPE:"+str(scopename), "\nVV:"+str(vv))
         splitscope = scopename.split(" ")
         cc = int(splitscope[-1].split(":")[0])
         bookname = ''
-        #print(splitscope)
         if len(splitscope) > 2:
             i = 0
             while i < (len(splitscope)-1):
@@ -1047,12 +1040,9 @@ class ScripturePanel:
             bookname = bookname.strip()
         else:
             bookname = splitscope[0]
-        #print(bookname)
         bb = bibledb_lib.getBookIndex(bookname)
         sb = bibledb_lib.getBookIndex(self.selected_start_b)
         eb = bibledb_lib.getBookIndex(self.selected_end_b)
-        #print(vv)
-        #print(cc)
         if event.state & (1<<0):
             #shift key is pressed
             #if a range is already selected, just go back to the first verse in it
@@ -1083,7 +1073,6 @@ class ScripturePanel:
                 eb = bb
             if sb == eb:
                 if int(cc) > int(self.selected_start_c):
-                    #print("new chapter is greater than old chapter")
                     self.selected_end_c = str(cc)
                     self.selected_end_v = str(vv)
                 elif int(cc) < int(self.selected_start_c):
@@ -1110,8 +1099,6 @@ class ScripturePanel:
             self.selected_end_c = str(cc)
         self.display_chapter()
         #self.display_chapter()
-        #print(f"Text clicked: {clicked_text}")
-        #print(f"Scope: {scopename}")
         
     def reset_scrollregion(self, event = None):
         self.canvas.configure(scrollregion=self.canvas.bbox("ALL"))
@@ -1127,7 +1114,6 @@ class ScripturePanel:
         else:
             item = self.current_item
             data = self.current_data
-        #print(item)
         self.canvas.delete("all")
         y_offset = 40  # Initial Y offset
         x_offset = 5 #initial x offset...
@@ -1138,12 +1124,7 @@ class ScripturePanel:
         global textlinegap, fbdCircleDiam, textelbowroom
         selected_y_offset = None
         item_hierarchy = item.split('/')
-        #print(item_hierarchy)
         if len(item_hierarchy) > 2:
-            #print(item)
-            #print(item_hierarchy)
-            #print(self.selected_start_b)
-            #print(self.selected_end_b)
             thisbook = item.split('/')[-2]
             thischapter = item.split(' ')[-1]
 
@@ -1169,7 +1150,6 @@ class ScripturePanel:
             sb = int(bibledb_lib.getBookIndex(self.selected_start_b))
             eb = int(bibledb_lib.getBookIndex(self.selected_end_b))
 
-            #print("book:",sb, b, eb,"\nchapter:",sc,c,ec,"\nverse:",sv, v, ev)
             verse_heights = []
             footnotes = []  # Collect footnotes for display at bottom
             cross_refs = []  # Collect cross-references for display at bottom
@@ -1203,7 +1183,6 @@ class ScripturePanel:
                 
                 verseRef = str(item).replace("/Ch "," ").replace("/","")+":"+str(v)
                 footnote_text = verse_obj.get("footnote", "")
-                #print(verseRef)
                 #Print the verse number in italics (underline if it has a footnote)
                 verse_font = self.italicunderlineFont if has_footnote else self.italicFont
                 text_object = self.canvas.create_text(x_offset, y_offset, text=str(v), anchor=tk.NW, fill = textColor, font = verse_font)
@@ -1410,8 +1389,6 @@ class ScripturePanel:
                         
                         y_offset += textlineheight + textlinegap * 2  # Extra space between cross-references
                         
-        #print(item_hierarchy)
-        #print(data)
 
         # Configure the scroll region to make the canvas scrollable
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
@@ -1427,15 +1404,6 @@ class ScripturePanel:
                 #tbh I'm not sure when this part of the if-statement will ever be called anymore.
                 self.canvas.yview_moveto(0)
             self.canvas.xview_moveto(0)
-        #canvas_width = self.canvas.winfo_reqwidth()
-        #canvas_height = self.canvas.winfo_reqheight()
-        #print("width, height", canvas_width, canvas_height)
-        #print("x_offset, y_offset", x_offset, y_offset)
-        #try: #this will work if x_offset is set, which is the case when we are drawing ladders.
-        #    self.canvas.config(scrollregion=(0, 0, x_offset, y_offset+40))
-        #except:
-        #    self.canvas.config(scrollregion=(0, 0, canvas_width, y_offset+40))
-
 
 class MultiLineInputDialog(simpledialog.Dialog):
 
@@ -1572,7 +1540,6 @@ class TaggerPanel:
         # data = {"ref": the tag name, "id": the tag id}
         # shift_key doesn't matter.
 
-        #print(self.current_item)
         #keep track of what kind of thing we're currently showing.
         update_history = True
         from_history = False
@@ -1772,7 +1739,6 @@ class TaggerPanel:
 
             checklist = self.tags_list.copy() #copy so that we can modify the list while iterating through the unchanged version of it.
             synonymlist = []
-            #print("checklist",checklist)
             
             #get all synonymous tags
             for tag in checklist:
@@ -1902,7 +1868,6 @@ class TaggerPanel:
                 self.verse_xref_list = [(bibledb_lib.getBookNameByIndex(x["start_book"])+" "+str(x["start_chapter"])+":"+str(x["start_verse"]), bibledb_lib.getBookNameByIndex(x["end_book"])+" "+str(x["end_chapter"])+":"+str(x["end_verse"])) for x in verses]
                 #except:
                     #self.verse_xref_list = []
-                    #print("Failed to get the verse references for that tag. This error might occur if your DB was made with a version of the Bible that had different books from the version you're currently using. For example, if the DB was made including the apocrypha, but your current Bible doesn't have it.")
                 tagx = 0
                 for xverse in self.verse_xref_list:
                     itemText = combineVRefs(xverse[0],xverse[1])
@@ -1942,7 +1907,7 @@ class TaggerPanel:
             # Parse the combined reference using parseVerseReference which handles ranges
             parsed = bibledb_lib.parseVerseReference(ref)
             if parsed is None:
-                print(f"check_history_chapter: Could not parse ref={ref}")
+                logger.debug(f"check_history_chapter: Could not parse ref={ref}")
                 return None
             
             # Reconstruct the start and end verse references
@@ -1950,7 +1915,7 @@ class TaggerPanel:
             end_book = bibledb_lib.getBookNameByIndex(parsed['eb'])
             
             if start_book is None or end_book is None:
-                print(f"check_history_chapter: Invalid book indices sb={parsed['sb']}, eb={parsed['eb']}")
+                logger.debug(f"check_history_chapter: Invalid book indices sb={parsed['sb']}, eb={parsed['eb']}")
                 return None
             
             start_ref = f"{start_book} {parsed['sc']}:{parsed['sv']}"
@@ -1993,14 +1958,12 @@ class TaggerPanel:
             self.bta.cause_canvas_to_refresh()
             self.bta.update_tree_colors()
         else:
-            print("Tag deletion canceled")
+            logger.debug("Tag deletion canceled")
 
     def create_tag(self, event, verse, reftype):
         #tag = simpledialog.askstring("Add Tag", "Enter Tag:", initialvalue="") #OLD WAY -- no tag suggestions
         global open_db_file, bible_data
         tag = TagInputDialog(self.bta.master,open_db_file).selected_tag
-        #print("the selected tag is:",tag,type(tag))
-        #print("Do the tag creation logic here")
         if (tag is not None) and (tag != ""):
             if reftype == "verse":
                 bibledb_lib.add_verse_tag(open_db_file, verse, tag, bible_data)
@@ -2015,17 +1978,14 @@ class TaggerPanel:
             self.canvas.yview_moveto(1.0)
         else:
             pass
-            #print("Tag creation cancelled")
     
     def edit_note_text(self, event, reference, reftype):
-        #print(type(self.note_area_text),self.note_area_text)
         current_text = self.note_area_text
         if current_text == None:
             current_text = ""
         MultiLineInputDialog.initial_value = current_text
         dialog = MultiLineInputDialog(self.bta.master, "Edit Notes")
         new_text = dialog.result
-        #print(new_text)
         if new_text is not None and new_text != "":
             global bible_data
             self.note_area_text = new_text
@@ -2063,7 +2023,7 @@ def migrate_db(db_path, interactive=True):
                backup_path is the path to the backup file created, or None if no backup
     """
     if not os.path.exists(db_path):
-        print(f"✗ Error: Database file not found: {db_path}")
+        logger.error(f"Error: Database file not found: {db_path}")
         return False, None
     
     # Check current database version
@@ -2072,24 +2032,22 @@ def migrate_db(db_path, interactive=True):
 
     if current_version == target_version:
         if interactive:
-            print(f"Database is already at version {target_version}")
+            logger.warning(f"Database is already at version {target_version}")
         return True, None
 
     if current_version > target_version:
-        print(f"Error: Database version ({current_version}) is newer than expected ({target_version})")
-        print("This may happen if you're using an older version of Bible Tagger")
+        logger.error(f"Database version ({current_version}) is newer than expected ({target_version})")
+        logger.warning("This may happen if you're using an older version of Bible Tagger")
         return False, None
 
     # Find migration path
     migration_dir = "db_migration"
     if not os.path.exists(migration_dir):
-        print(f"Error: Migration directory not found: {migration_dir}")
+        logger.error(f"Migration directory not found: {migration_dir}")
         return False, None
 
     if interactive:
-        print(f"Database: {db_path}")
-        print(f"Current version: {current_version}")
-        print(f"Target version: {target_version}")
+        logger.info(f"Database: {db_path} | Current version: {current_version} | Target version: {target_version}")
 
     # Build migration chain
     migration_chain = []
@@ -2100,8 +2058,8 @@ def migrate_db(db_path, interactive=True):
         migration_file = os.path.join(migration_dir, f"{current}-to-{next_version}.py")
         
         if not os.path.exists(migration_file):
-            print(f"Error: Missing migration script: {migration_file}")
-            print(f"Cannot migrate from version {current} to {next_version}")
+            logger.critical(f"Missing migration script: {migration_file}")
+            logger.error(f"Cannot migrate from version {current} to {next_version}")
             return False, None
 
         migration_chain.append((current, next_version, migration_file))
@@ -2142,10 +2100,10 @@ def migrate_db(db_path, interactive=True):
             create_backup = (index == 0)  # Only backup on first migration
             success = migration_module.migrate_database(db_path, create_backup=create_backup)
             if not success:
-                print(f"\nMigration failed at step {from_ver} → {to_ver}")
+                logger.error(f"Migration failed at step {from_ver} → {to_ver}")
                 return False, backup_path if index == 0 and os.path.exists(backup_path) else None
         else:
-            print(f"Error: Migration script {script} does not have migrate_database function")
+            logger.critical(f"Migration script {script} does not have migrate_database function")
             return False, None
     
     if interactive:
@@ -2195,8 +2153,7 @@ if __name__ == "__main__":
     def update_config():
         """Update config file with missing options from template"""
         if not os.path.exists(config_filename):
-            print(f"Config file not found: {config_filename}")
-            print("Creating new config file...")
+            print(f"Config file not found: {config_filename}, creating new...")
             create_config()
             return
         
@@ -2346,9 +2303,45 @@ if __name__ == "__main__":
     if not os.path.exists(config_filename):
         create_config()
 
+    # Read config before setting up logging
+    cfg = configparser.ConfigParser()
+    cfg.read(config_filename)
+
+    # Configure logging from config file
+    log_level_str = cfg.get('DEBUG', 'log_level', fallback='INFO').upper()
+    log_level = getattr(logging, log_level_str, logging.INFO)
+    output_log_file = cfg.getboolean('DEBUG', 'output_log_file', fallback=False)
+    log_file_path = cfg.get('DEBUG', 'log_file_path', fallback='').strip()
+
+    # Build handlers list - always output to console
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(log_level)
+    console_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    console_handler.setFormatter(console_formatter)
+    
+    handlers = [console_handler]
+    
+    if output_log_file and not log_file_path:
+        log_file_path = 'logs/app.log'
+    if output_log_file and log_file_path:
+        # Create log directory if it doesn't exist
+        log_dir = os.path.dirname(log_file_path)
+        if log_dir and not os.path.exists(log_dir):
+            os.makedirs(log_dir)
+        # Add file handler
+        file_handler = logging.FileHandler(log_file_path, encoding='utf-8')
+        file_handler.setLevel(log_level)
+        file_handler.setFormatter(console_formatter)
+        handlers.append(file_handler)
+
+    logging.basicConfig(
+        level=log_level,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=handlers,
+        force=True  # Override any existing logging configuration
+    )
+
     if args.command is None:
-        cfg = configparser.ConfigParser()
-        cfg.read(config_filename)
 
         root = tk.Tk()
         root.title("Bible Tagger")
@@ -2395,7 +2388,7 @@ if __name__ == "__main__":
             # Create scraper and download
             print("Initializing scraper...")
             scraper = BibleScraper(args.version, template_path)
-            
+
             print("Downloading Bible text...")
             bible_data = scraper.scrape_bible()
             

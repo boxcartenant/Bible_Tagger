@@ -1,5 +1,8 @@
 import json
 import sqlite3
+import logging
+
+logger = logging.getLogger(__name__)
 
 # update this when breaking schema changes are made, prevents attempting to merge incompatible databases
 CURRENT_DATABASE_VERSION = 2
@@ -113,25 +116,25 @@ def merge_dbs(current_db_path, other_db_path):
         other_version = other_cursor.fetchone()[0]
         
         if current_version != other_version:
-            print(f"ERROR: Cannot merge databases with different schema versions. (This: {current_version}, Other: {other_version})")
+            logger.error(f"Cannot merge databases with different schema versions. (This: {current_version}, Other: {other_version})")
             current_conn.close()
             other_conn.close()
             return
 
         if current_version != CURRENT_DATABASE_VERSION:
-            print(f"ERROR: Both databases are version {current_version}, expected version {CURRENT_DATABASE_VERSION}")
+            logger.error(f"Both databases are version {current_version}, expected version {CURRENT_DATABASE_VERSION}")
             current_conn.close()
             other_conn.close()
             return
 
-        print("Database versions match. Starting merge...")
+        logger.debug("Database versions match. Starting merge...")
 
         # Create mappings for ID translations
         tag_id_map = {}  # old_tag_id -> new_tag_id
         verse_group_id_map = {}  # old_verse_group_id -> new_verse_group_id
         
         # 1. Merge tags (with notes)
-        print("Merging tags...")
+        logger.debug("Merging tags...")
         other_cursor.execute("SELECT tag_id, tag, note FROM tag")
         other_tags = other_cursor.fetchall()
         
@@ -165,10 +168,10 @@ def merge_dbs(current_db_path, other_db_path):
                 tag_id_map[old_tag_id] = new_tag_id
         
         current_conn.commit()
-        print(f"Merged {len(other_tags)} tags")
+        logger.debug(f"Merged {len(other_tags)} tags")
         
         # 2. Merge verse_groups (with notes)
-        print("Merging verse groups...")
+        logger.debug("Merging verse groups...")
         other_cursor.execute("SELECT verse_group_id, note FROM verse_group")
         other_verse_groups = other_cursor.fetchall()
 
@@ -255,10 +258,10 @@ def merge_dbs(current_db_path, other_db_path):
                 verse_group_id_map[old_vg_id] = new_vg_id
         
         current_conn.commit()
-        print(f"Merged {len(other_verse_groups)} verse groups")
+        logger.debug(f"Merged {len(other_verse_groups)} verse groups")
         
         # 4. Merge verse_group_tag relationships
-        print("Merging verse-tag relationships...")
+        logger.debug("Merging verse-tag relationships...")
         other_cursor.execute("SELECT verse_group_id, tag_id FROM verse_group_tag")
         vg_tags = other_cursor.fetchall()
         
@@ -283,10 +286,10 @@ def merge_dbs(current_db_path, other_db_path):
                     """, (new_vg_id, new_tag_id))
         
         current_conn.commit()
-        print(f"Merged {len(vg_tags)} verse-tag relationships")
+        logger.debug(f"Merged {len(vg_tags)} verse-tag relationships")
         
         # 5. Merge tag_tag relationships
-        print("Merging tag-tag relationships...")
+        logger.debug("Merging tag-tag relationships...")
         other_cursor.execute("SELECT tag_1_id, tag_2_id FROM tag_tag")
         t_tags = other_cursor.fetchall()
         
@@ -314,17 +317,17 @@ def merge_dbs(current_db_path, other_db_path):
                     """, (new_tag_1_id, new_tag_2_id))
         
         current_conn.commit()
-        print(f"Merged {len(t_tags)} tag-tag relationships")
+        logger.debug(f"Merged {len(t_tags)} tag-tag relationships")
         
         # Close connections
         other_conn.close()
         current_conn.close()
         
-        print("\nDatabase merge completed successfully!")
+        logger.info("Database merge completed successfully!")
         return True
         
     except Exception as e:
-        print(f"\nError during merge: {e}")
+        logger.error(f"Error during merge: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -435,7 +438,7 @@ def parseVerseReference(verse_ref):
 
     # Validate that book indices are valid
     if sb == -1 or eb == -1:
-        print(f"parseVerseReference: Invalid book index in '{verse_ref}' (sb={sb}, eb={eb})")
+        logger.error(f"parseVerseReference: Invalid book index in '{verse_ref}' (sb={sb}, eb={eb})")
         return None
 
     return {'sb':sb, 'sc':sc, 'sv': sv, 'eb':eb, 'ec':ec, 'ev': ev}
@@ -853,7 +856,7 @@ def delete_verse_tag(database_file, verse, tag):
     tag_result = cursor.fetchone()
     
     if not tag_result:
-        print(f"Tag '{tag}' not found.")
+        logger.error(f"Tag '{tag}' not found.")
         conn.close()
         return
         
@@ -898,7 +901,7 @@ def delete_verse_tag(database_file, verse, tag):
         # Don't delete orphaned tags (per user requirement)
         conn.commit()
     else:
-        print(f"Verse '{verse}' not found.")
+        logger.error(f"Verse '{verse}' not found.")
 
     conn.close()
 
@@ -945,7 +948,7 @@ def delete_tag_tag(database_file, tag1, tag2):
     tag2_result = cursor.fetchone()
 
     if not tag1_result or not tag2_result:
-        print(f"Tag '{tag1}' or tag '{tag2}' not found.")
+        logger.error(f"Tag '{tag1}' or tag '{tag2}' not found.")
         conn.close()
         return
         
@@ -1024,7 +1027,7 @@ def delete_verse_note(database_file, verse):
         verse_groups = cursor.fetchall()
 
         if not verse_groups:
-            print(f"Verse '{verse}' not found.")
+            logger.error(f"Verse '{verse}' not found.")
             conn.close()
             return
 
@@ -1060,7 +1063,7 @@ def delete_verse_note(database_file, verse):
         conn.commit()
         
     except Exception as e:
-        print("Can't delete note:", e)
+        logger.error(f"Failed to delete note: {e}")
         conn.close()
         return
 
@@ -1099,7 +1102,7 @@ def delete_tag_note(database_file, tag):
     tag_result = cursor.fetchone()
     
     if not tag_result:
-        print(f"Tag '{tag}' not found.")
+        logger.error(f"Tag '{tag}' not found.")
         conn.close()
         return
         
@@ -1131,7 +1134,7 @@ def get_db_stuff(database_file, x_type, y_type, y_value):
     
     #let's just double check that I didn't make a programming error.....
     if x_type not in ["verse", "tag", "note"] or y_type not in ["verse", "tag", "note"]:
-        print("bad parameters in get_db_stuff. types must be verse, tag, or note.")
+        logger.error("bad parameters in get_db_stuff. types must be verse, tag, or note.")
         return None
 
     conn = sqlite3.connect(database_file)
@@ -1230,7 +1233,7 @@ def get_db_stuff(database_file, x_type, y_type, y_value):
         cursor.execute(query_string, (y_value,))
     else:
         # Other cases not yet implemented
-        print(f"get_db_stuff: combination x_type={x_type}, y_type={y_type} not yet implemented")
+        logger.critical(f"get_db_stuff: combination x_type={x_type}, y_type={y_type} not yet implemented")
         conn.close()
         return []
 
@@ -1664,16 +1667,16 @@ def cleanup_database(database_file):
         
         # Log cleanup results
         if empty_tag_notes > 0 or empty_vg_notes > 0 or len(orphaned_ids) > 0:
-            print(f"Database cleanup completed:")
+            logger.info(f"Database cleanup completed:")
             if empty_tag_notes > 0:
-                print(f"  - Cleaned {empty_tag_notes} empty tag note(s)")
+                logger.debug(f"  - Cleaned {empty_tag_notes} empty tag note(s)")
             if empty_vg_notes > 0:
-                print(f"  - Cleaned {empty_vg_notes} empty verse_group note(s)")
+                logger.debug(f"  - Cleaned {empty_vg_notes} empty verse_group note(s)")
             if len(orphaned_ids) > 0:
-                print(f"  - Deleted {len(orphaned_ids)} orphaned verse_group(s)")
-        
+                logger.debug(f"  - Deleted {len(orphaned_ids)} orphaned verse_group(s)")
+
     except Exception as e:
-        print(f"Error during database cleanup: {e}")
+        logger.error(f"Error during database cleanup: {e}")
         conn.rollback()
     finally:
         conn.close()

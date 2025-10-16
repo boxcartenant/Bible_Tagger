@@ -10,6 +10,9 @@ from collections import defaultdict, deque
 import numpy as np
 import numpy as np
 import matplotlib.pyplot as plt
+import logging
+
+logger = logging.getLogger(__name__)
 
 def combineVRefs(vref1, vref2):
     #get the verse reference and store in self.current_data['ref']
@@ -36,9 +39,7 @@ def combineVRefs(vref1, vref2):
         vA = vref1.split(":")[1]
         vB = vref2.split(":")[1]
     except Exception as e:
-        print("Error in combineVRefs(): ",e)
-        print("vref1 =", vref1)
-        print("vref2 =", vref2)
+        logger.error(f"Error: in combineVRefs() with vref1 = {vref1} and vref2 = {vref2} : {e}")
         return vref1
     if bA != bB: #different book
         if bdblib.getBookIndex(bA) < bdblib.getBookIndex(bB):
@@ -149,7 +150,6 @@ class TagInputDialog(simpledialog.Dialog):
             self.listbox.focus_set()       # Move focus to the listbox
 
     def quick_select(self, event):
-        #print("quick select")
         index = self.listbox.nearest(event.y)
         if index >= 0:
             if self.bookinputdialog:
@@ -160,7 +160,6 @@ class TagInputDialog(simpledialog.Dialog):
             self.entry.insert(0,selected_text)
     
     def on_select(self, event):
-        #print("on select")
         # Get the selected tag from the listbox
         selected = self.listbox.curselection()
         if self.bookinputdialog and selected:
@@ -171,7 +170,6 @@ class TagInputDialog(simpledialog.Dialog):
             self.ok()  # Close the dialog
 
     def apply(self):
-        #print("apply")
         selected = None
         # Get the final tag value (from entry or listbox)
         if self.topselection and self.listbox.size() > 0:
@@ -180,16 +178,11 @@ class TagInputDialog(simpledialog.Dialog):
             
             # Check if there are no items identical to the string from self.entry.get()
             search_string = self.entry.get()
-            #print(search_string, [self.listbox.get(i) for i in range(self.listbox.size())])
-            #if self.bookinputdialog:
-            #    matching_index = next((i for i in range(self.listbox.size()) if self.listbox.get(i) == search_string), None)
-            #else:
             matching_index = next((i for i in range(self.listbox.size()) if self.listbox.get(i)[0] == search_string), None)
     
             # If no highlighted items and no matching items, select the first item
             if not has_selected_items:
                 if matching_index is not None:
-                    #print("found!")
                     # If an identical item is found, select it
                     self.listbox.selection_set(matching_index)
                     self.listbox.activate(matching_index)  # Make the matching item active
@@ -629,7 +622,6 @@ class DBManager:
     def set_active_panel(self, event):
         # Set the active panel to the widget under the mouse
         self.active_panel = event.widget
-        #print("active_panel",self.active_panel)
 
     def clear_active_panel(self, event):
         # Clear the active panel when the mouse leaves
@@ -637,7 +629,6 @@ class DBManager:
 
     def scroll_active_panel(self, event):
         # Only scroll the active panel
-        #print("scrolling active_panel",self.active_panel)
         if self.active_panel:
             first, last = self.active_panel.yview()  # Get scrollbar position
             if event.delta > 0 and first <= 0:  # Trying to scroll up but already at the top
@@ -947,7 +938,7 @@ class DBManager:
         if self.export_tags_this_time:
             self.export_tags_this_time = False
             workbook.save(self.export_tags_path)
-            print("Exported tags to: " + str(self.export_tags_path))
+            logging.info(f"Exported tags to: {self.export_tags_path}")
             self.export_tags_path = None
         self.hide_loading_overlay()
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
@@ -1033,7 +1024,7 @@ class VerseSortingPanel(ttk.Frame):
             self.selected_books.remove(bookname)
             self.display_attributes()
         else:
-            print("Tried removing a book that wasn't listed from the filter pane. Oh no!")
+            logging.warning("Tried removing a book that wasn't listed from the filter pane.")
 
     def select_tag(self, event):
         #replace tagSelect() with the actual code for tag selection, to get the popup.
@@ -1050,7 +1041,7 @@ class VerseSortingPanel(ttk.Frame):
             self.tags_list.remove(tagname)
             self.display_attributes()
         else:
-            print("Tried removing a tag that wasn't listed from the filter pane. Oh no!")
+            logging.warning("Tried removing a tag that wasn't listed from the filter pane.")
 
     def on_tag_click(self, event, item_id):
         #this callback goes to the main window to show tag data
@@ -1087,7 +1078,7 @@ class VerseSortingPanel(ttk.Frame):
             root.clipboard_append(result)
             root.update()
         else:
-            print("ERROR in bdblib_Manager.copy_verse_list(). No access to root.")
+            logging.critical("Error in bdblib_Manager.copy_verse_list(). No access to root.")
 
     def export_tags_and_synonyms(self, event):
 
@@ -1104,7 +1095,6 @@ class VerseSortingPanel(ttk.Frame):
                     checkverses = bdblib.get_db_stuff(self.dbdata, "verse", "tag", tag)
                     for verse in checkverses:
                         if verse not in verses:
-                            #print(verse)
                             verses.append(verse)
                 #I don't know if these functions will work, but they're basically what's being done down below in display_verses
                 verses.sort(key=lambda r: (r['start_book'], r['start_chapter'], r['start_verse']))#sort by start book first, then chapter, then verse, so all the verses appear in order
@@ -1856,7 +1846,6 @@ class VerseSortingPanel(ttk.Frame):
         else:
 
             # PREP LIST OF TAGS AND VERSES ##---- DONE
-            #print("test 1")
             #delete tag button size...
             
             checklist = self.tags_list.copy() #in this case, the checklist is all strings, so no tag['tag'] or tag['id']
@@ -1870,7 +1859,6 @@ class VerseSortingPanel(ttk.Frame):
                 for tag in self.tags_list:
                     #prepare the verse set for this tag and its synonyms by getting the verses for this tag first.
                     verse_set = set()
-                    #print("tag", tag)
                     vd = bdblib.get_db_stuff(self.dbdata, "verse", "tag", tag) #vd now has a list of all the verses as returned by get_db_stuff
                     vdcopy = vd.copy() #make a copy of verse data so we can parse it safely
                     #eliminate all verses that aren't in the selected books
@@ -1882,8 +1870,6 @@ class VerseSortingPanel(ttk.Frame):
                                 vd.remove(verse)
                         vdcopy = vd.copy() #remake vdcopy for the next filter
 
-
-                    #print("vd 1", vd)
                     #convert the verse data to a tuple of numbers to make it hashable for some list functions
                     verse_set.update(((m["start_book"],m["start_chapter"],m["start_verse"],m["end_book"],m["end_chapter"],m["end_verse"]) for m in vd))
 
@@ -1901,7 +1887,6 @@ class VerseSortingPanel(ttk.Frame):
                             synonyms += bdblib.get_db_stuff(self.dbdata, "tag", "tag", synonym['tag'])
                         # add the verses for every synonym
                         vd = bdblib.get_db_stuff(self.dbdata, "verse", "tag", synonym['tag'])
-                        #print("vd 2", vd)
                         verse_set.update(((m["start_book"],m["start_chapter"],m["start_verse"],m["end_book"],m["end_chapter"],m["end_verse"]) for m in vd))
 
                     # Append the verse set (tag + its synonyms) to grouped_verses
@@ -2086,7 +2071,6 @@ class VerseSortingPanel(ttk.Frame):
             tagx = 0
             
             for book in self.selected_books:
-                #print(book)
                 book_width = self.canvasFont.measure(book) + 2*textelbowroom
                 if book_width + xb_width + tagx+1 + x_offset + right_x_offset > panelWidth: #+1 for that thicker line between tags
                     tagx = 0
@@ -2163,7 +2147,7 @@ class VerseSortingPanel(ttk.Frame):
                 self.verse_xref_list = [(bdblib.getBookNameByIndex(q[0])+" "+str(q[1])+":"+str(q[2]), bdblib.getBookNameByIndex(q[3])+" "+str(q[4])+":"+str(q[5])) for q in verses]
             except:
                 self.verse_xref_list = []
-                print("Failed to get the verse references for that tag. This error might occur if your DB was made with a version of the Bible that had different books from the version you're currently using. For example, if the DB was made including the apocrypha, but your current Bible doesn't have it.")
+                logging.critical("Failed to get the verse references for that tag. This error might occur if your DB was made with a version of the Bible that has different versification from the version you're currently using.")
             self.canvas.itemconfigure(versecount_text, text = "total verse count: " +str(len(self.verse_xref_list)))
             tagx = 0
             self.shown_verses = []
@@ -2193,7 +2177,6 @@ class VerseSortingPanel(ttk.Frame):
                 self.canvas.create_text(x_offset+tagx+textelbowroom, y_offset+textlinegap, text=itemText, anchor=tk.NW, font = self.canvasFont, tags=clicktag)
                 self.canvas.tag_bind(clicktag, '<Button-1>', lambda event, payload=xverse: self.on_verse_click(event, payload))
                 tagx += button_width
-            #print("test 3")
             y_offset += textlineheight + textlinegap*3 + 10
             self.canvas.configure(scrollregion=self.canvas.bbox("all"))
 
