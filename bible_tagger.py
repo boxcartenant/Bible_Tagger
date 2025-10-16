@@ -540,16 +540,21 @@ class BibleTaggerApp:
         start = bibledb_lib.parseVerseReference(data[0])
         end = bibledb_lib.parseVerseReference(data[1])
         
+        # Check if parsing failed
+        if start is None or end is None:
+            print(f"Error: Could not parse verse references: start='{data[0]}', end='{data[1]}'")
+            return
+        
         # Update scripture panel selection
-        self.scripture_panel.selected_start_b = bibledb_lib.book_proper_names[start['sb']]
-        self.scripture_panel.selected_end_b = bibledb_lib.book_proper_names[end['eb']]
+        self.scripture_panel.selected_start_b = bibledb_lib.getBookNameByIndex(start['sb'])
+        self.scripture_panel.selected_end_b = bibledb_lib.getBookNameByIndex(end['eb'])
         self.scripture_panel.selected_start_c = start['sc']
         self.scripture_panel.selected_end_c = end['ec']
         self.scripture_panel.selected_start_v = start['sv']
         self.scripture_panel.selected_end_v = end['ev']
         
         # Navigate to the first verse in the range
-        navtreedata = "/" + bibledb_lib.book_proper_names[start['sb']] + "/Ch " + start['sc']
+        navtreedata = "/" + bibledb_lib.getBookNameByIndex(start['sb']) + "/Ch " + start['sc']
         self.navigation_tree.select_item(navtreedata, True)
     
     def options_callback(self, data, scrollreset = False):
@@ -833,7 +838,7 @@ class NavigationTree:
             try:
                 # Parse the reference to get book and chapter
                 parsed = bibledb_lib.parseVerseReference(last_verse_ref)
-                book = bibledb_lib.book_proper_names[parsed['sb']]
+                book = bibledb_lib.getBookNameByIndex(parsed['sb'])
                 chapter = parsed['sc']
                 navtreedata = f"/{book}/Ch {chapter}"
                 
@@ -848,7 +853,6 @@ class NavigationTree:
                 print(f"Error navigating to verse: {e}")
                 self.bta.cause_canvas_to_refresh()
         else:
-            print("No verse found in history, just refreshing canvas")
             # No verse in history, just refresh the canvas
             self.bta.cause_canvas_to_refresh()
         
@@ -1059,51 +1063,51 @@ class ScripturePanel:
             
             #set selected chapters in order
             if bb > sb:
-                self.selected_end_b = bibledb_lib.book_proper_names[bb]
+                self.selected_end_b = bibledb_lib.getBookNameByIndex(bb)
                 eb = bb
                 self.selected_end_c = cc
                 self.selected_end_v = vv
             elif bb < sb:
-                self.selected_end_b = bibledb_lib.book_proper_names[sb]
+                self.selected_end_b = bibledb_lib.getBookNameByIndex(sb)
                 eb = sb
-                self.selected_start_b = bibledb_lib.book_proper_names[bb]
+                self.selected_start_b = bibledb_lib.getBookNameByIndex(bb)
                 sb = bb
                 self.selected_end_c = self.selected_start_c
                 self.selected_start_c = cc
                 self.selected_end_v = self.selected_start_v
                 self.selected_start_v = vv
             else: #same book
-                self.selected_start_b = bibledb_lib.book_proper_names[bb]
+                self.selected_start_b = bibledb_lib.getBookNameByIndex(bb)
                 sb = bb
-                self.selected_end_b = bibledb_lib.book_proper_names[bb]
+                self.selected_end_b = bibledb_lib.getBookNameByIndex(bb)
                 eb = bb
             if sb == eb:
                 if int(cc) > int(self.selected_start_c):
                     #print("new chapter is greater than old chapter")
-                    self.selected_end_c = cc
-                    self.selected_end_v = vv
-                elif cc < self.selected_start_c:
+                    self.selected_end_c = str(cc)
+                    self.selected_end_v = str(vv)
+                elif int(cc) < int(self.selected_start_c):
                     self.selected_end_c = self.selected_start_c
-                    self.selected_start_c = cc
+                    self.selected_start_c = str(cc)
                     self.selected_end_v = self.selected_start_v
-                    self.selected_start_v = vv
+                    self.selected_start_v = str(vv)
                 else:#same chapter
-                    self.selected_end_c = cc
-                    self.selected_start_c = cc
+                    self.selected_end_c = str(cc)
+                    self.selected_start_c = str(cc)
             #if the chapter hasn't changed, just do the verses:
                 if self.selected_end_c == self.selected_start_c:
-                    if vv > self.selected_start_v:
-                        self.selected_end_v = vv
+                    if int(vv) > int(self.selected_start_v):
+                        self.selected_end_v = str(vv)
                     else:
                         self.selected_end_v = self.selected_start_v
-                        self.selected_start_v = vv
+                        self.selected_start_v = str(vv)
         else:
-            self.selected_start_b = bibledb_lib.book_proper_names[bb]
-            self.selected_end_b = bibledb_lib.book_proper_names[bb]
-            self.selected_start_v = vv
-            self.selected_end_v = vv
-            self.selected_start_c = cc
-            self.selected_end_c = cc
+            self.selected_start_b = bibledb_lib.getBookNameByIndex(bb)
+            self.selected_end_b = bibledb_lib.getBookNameByIndex(bb)
+            self.selected_start_v = str(vv)
+            self.selected_end_v = str(vv)
+            self.selected_start_c = str(cc)
+            self.selected_end_c = str(cc)
         self.display_chapter()
         #self.display_chapter()
         #print(f"Text clicked: {clicked_text}")
@@ -1892,10 +1896,10 @@ class TaggerPanel:
                 
                 #try:
                     # If the user makes a DB using a version of the Bible that has the apocrypha, and then tries to pull notes about Revelation from that DB while he has a protestant Bible loaded...
-                    #    then the reference to bibledb_lib.book_proper_names[] will throw an index out of range error.
+                    #    then the reference to getBookNameByIndex will return None if book index is out of range.
                     #    I am making this tool primarily for myself to use, and I don't include the apocrypha in my Bible, so I don't plan to fix this.
                 verses.sort(key=lambda r: (r["start_book"], r["start_chapter"], r["start_verse"]))
-                self.verse_xref_list = [(bibledb_lib.book_proper_names[x["start_book"]]+" "+str(x["start_chapter"])+":"+str(x["start_verse"]), bibledb_lib.book_proper_names[x["end_book"]]+" "+str(x["end_chapter"])+":"+str(x["end_verse"])) for x in verses]
+                self.verse_xref_list = [(bibledb_lib.getBookNameByIndex(x["start_book"])+" "+str(x["start_chapter"])+":"+str(x["start_verse"]), bibledb_lib.getBookNameByIndex(x["end_book"])+" "+str(x["end_chapter"])+":"+str(x["end_verse"])) for x in verses]
                 #except:
                     #self.verse_xref_list = []
                     #print("Failed to get the verse references for that tag. This error might occur if your DB was made with a version of the Bible that had different books from the version you're currently using. For example, if the DB was made including the apocrypha, but your current Bible doesn't have it.")
@@ -1929,14 +1933,29 @@ class TaggerPanel:
         # returns None if no change to chapter is needed, otherwise returns the value to pass to change_bookchapter()
         if item == "verseClick" and data and 'ref' in data:
             ref = data['ref']
-            # Parse to get start and end verse references
-            if '-' in ref:
-                parts = ref.split('-')
-                start_ref = parts[0].strip()
-                end_ref = parts[1].strip()
-            else:
-                start_ref = ref
-                end_ref = ref
+            # The ref is already in a format that can be passed directly to change_bookchapter
+            # combineVRefs creates refs like "Genesis 1:20-24" or "Genesis 1:20"
+            # We just need to pass it as-is, not split it
+            # change_bookchapter expects a tuple of (start_verse_ref, end_verse_ref)
+            # but we stored the combined format, so we need to convert it back
+            
+            # Parse the combined reference using parseVerseReference which handles ranges
+            parsed = bibledb_lib.parseVerseReference(ref)
+            if parsed is None:
+                print(f"check_history_chapter: Could not parse ref={ref}")
+                return None
+            
+            # Reconstruct the start and end verse references
+            start_book = bibledb_lib.getBookNameByIndex(parsed['sb'])
+            end_book = bibledb_lib.getBookNameByIndex(parsed['eb'])
+            
+            if start_book is None or end_book is None:
+                print(f"check_history_chapter: Invalid book indices sb={parsed['sb']}, eb={parsed['eb']}")
+                return None
+            
+            start_ref = f"{start_book} {parsed['sc']}:{parsed['sv']}"
+            end_ref = f"{end_book} {parsed['ec']}:{parsed['ev']}"
+            
             return (start_ref, end_ref)
         return None
 

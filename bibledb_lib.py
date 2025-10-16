@@ -34,25 +34,50 @@ def get_database_version(database_file):
 # use add_verse_tag, add_verse_note, and add_tag_note to add data to the DB
 
 
-#ordered list of names, to be used like: book_proper_names[0] #returns "Genesis"
-book_proper_names = []
-
 ######################
 # INTERNALLY USED FUNCTIONS
 ######################
 
 # Function to get fully qualified book names from partial names
 def qualifyBook(book_name):
-    global book_proper_names
+    global bible_json_data
 
     if book_name == '':
         return None
     
-    for name in book_proper_names:
-        if book_name.lower() in name.lower():
-            return name
-        
+    # If we have the full JSON data, search through the names array
+    if bible_json_data and "books" in bible_json_data:
+        for book in bible_json_data["books"]:
+            # Check all alternate names
+            if "names" in book:
+                for alt_name in book["names"]:
+                    if book_name.lower() == alt_name.lower() or book_name.lower() in alt_name.lower():
+                        # Return the primary name (first in the names array)
+                        return book["names"][0]
+            # Fallback to book field
+            elif "book" in book:
+                if book_name.lower() == book["book"].lower() or book_name.lower() in book["book"].lower():
+                    return book["book"]
     return None
+
+def getBookNameByIndex(index):
+    """Get book name by 0-based index from bible_json_data"""
+    global bible_json_data
+    if bible_json_data and "books" in bible_json_data:
+        if 0 <= index < len(bible_json_data["books"]):
+            book = bible_json_data["books"][index]
+            if "names" in book and len(book["names"]) > 0:
+                return book["names"][0]
+            elif "book" in book:
+                return book["book"]
+    return None
+
+def getBookCount():
+    """Get the total number of books in the loaded Bible"""
+    global bible_json_data
+    if bible_json_data and "books" in bible_json_data:
+        return len(bible_json_data["books"])
+    return 0
 
 def copy_db(source_path, dest_path):
     source = sqlite3.connect(source_path)
@@ -309,8 +334,8 @@ def normalize_vref(passage):
     # and returns its normalized string name (Genesis 1:1-Exodus 2:2)
     vID, bA, cA, vA, bB, cB, vB = (str(n) for n in passage.values())
     
-    pA = book_proper_names[int(bA)]
-    pB = book_proper_names[int(bB)]
+    pA = getBookNameByIndex(int(bA))
+    pB = getBookNameByIndex(int(bB))
     if bA != bB: #different book
         if bA < bB:
             return(pA+" "+cA + ":" + vA + " - " + pB + " " +cB + ":" + vB)
@@ -330,8 +355,20 @@ def normalize_vref(passage):
         return (pA + " " + cB + ":" + vB)
 
 def getBookIndex(book):
+    global bible_json_data
     book = qualifyBook(book)
-    return book_proper_names.index(book) if book in book_proper_names else -1
+    if not book or not bible_json_data or "books" not in bible_json_data:
+        return -1
+    
+    # Find the index of the book by matching the primary name
+    for i, book_entry in enumerate(bible_json_data["books"]):
+        if "names" in book_entry and len(book_entry["names"]) > 0:
+            if book == book_entry["names"][0]:
+                return i
+        elif "book" in book_entry:
+            if book == book_entry["book"]:
+                return i
+    return -1
 
 def parseVerseReference(verse_ref):
     # Split the verse reference into parts
@@ -396,6 +433,11 @@ def parseVerseReference(verse_ref):
         sv = vparts[1].strip()
         ev = sv
 
+    # Validate that book indices are valid
+    if sb == -1 or eb == -1:
+        print(f"parseVerseReference: Invalid book index in '{verse_ref}' (sb={sb}, eb={eb})")
+        return None
+
     return {'sb':sb, 'sc':sc, 'sv': sv, 'eb':eb, 'ec':ec, 'ev': ev}
 
 def get_row_by_column(list_of_dicts, target_value, column_name):
@@ -429,13 +471,14 @@ def expand_verse_range(start_book, start_chapter, start_verse, end_book, end_cha
     """
     verses = []
     
-    # Get book names list (book_proper_names should be populated by getBibleData)
-    if not book_proper_names or start_book >= len(book_proper_names) or end_book >= len(book_proper_names):
+    # Get book names using the new helper functions
+    book_count = getBookCount()
+    if book_count == 0 or start_book >= book_count or end_book >= book_count:
         # Fallback: just return start and end if data not available
         raise Exception("Bible data is required to expand verse ranges.")
     
-    start_book_name = book_proper_names[start_book]
-    end_book_name = book_proper_names[end_book]
+    start_book_name = getBookNameByIndex(start_book)
+    end_book_name = getBookNameByIndex(end_book)
     
     # Same book
     if start_book == end_book:
@@ -487,8 +530,8 @@ def expand_verse_range(start_book, start_chapter, start_verse, end_book, end_cha
         
         # Middle books: all chapters and verses
         for bk in range(start_book + 1, end_book):
-            if bk < len(book_proper_names):
-                book_name = book_proper_names[bk]
+            if bk < getBookCount():
+                book_name = getBookNameByIndex(bk)
                 if book_name in bible_data:
                     book_chapters = bible_data[book_name]
                     for ch_idx, chapter_verses in enumerate(book_chapters):
@@ -630,13 +673,17 @@ def parseBibleData(data):
     bibleData: dict - {book_name: [chapters_array]}
         Each book contains the chapters array directly from JSON
     """
+    global bible_json_data
+    
     # Validate schema first
     is_valid, error_msg = validate_bible_schema(data)
     if not is_valid:
         raise ValueError(f"Invalid Bible JSON schema: {error_msg}")
-    
+    # Store the raw JSON data globally for qualifyBook to use
+    bible_json_data = data
+
     bibleData = {}
-    
+
     # Iterate over books
     for book in data["books"]:
         # Extract book name - use first name from 'names' array as primary name
@@ -645,12 +692,10 @@ def parseBibleData(data):
             book_name = book["names"][0]
         else:
             book_name = book["book"]
-        
-        book_proper_names.append(book_name)
-        
+
         # Store chapters directly as they are in the JSON
         bibleData[book_name] = book["chapters"]
-    
+
     return bibleData
 
 
@@ -1411,8 +1456,10 @@ def find_note_tag_chapters(database_file):
     #zip them into a dictionary for easy use
     tagged_chapters = []
     for row in rows:
-        bc = "/"+book_proper_names[int(row[0])] + '/Ch ' + str(row[1])
-        tagged_chapters.append(bc)
+        book_name = getBookNameByIndex(int(row[0]))
+        if book_name:
+            bc = "/" + book_name + '/Ch ' + str(row[1])
+            tagged_chapters.append(bc)
 
     return tagged_chapters
 

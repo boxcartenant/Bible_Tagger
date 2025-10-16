@@ -39,7 +39,7 @@ def combineVRefs(vref1, vref2):
         print("vref2 =", vref2)
         return vref1
     if bA != bB: #different book
-        if bdblib.book_proper_names.index(bA) < bdblib.book_proper_names.index(bB):
+        if bdblib.getBookIndex(bA) < bdblib.getBookIndex(bB):
             return(bA+" "+cA + ":" + vA + " - " + bB + " " +cB + ":" + vB)
         else:
             return(bB+" "+cB + ":" + vB + " - " + bA + " " +cA + ":" + vA)
@@ -851,12 +851,21 @@ class VerseSortingPanel(ttk.Frame):
         #self.canvas.create_text(10, 10, anchor="nw", text="Right-hand canvas content")
 
     def get_books_like(self, dbdata, partial_book):
-        result = [book for book in bdblib.book_proper_names if partial_book.lower().strip() in book.lower().strip()]
+        # Get all book names from the loaded Bible
+        all_books = []
+        if bdblib.bible_json_data and "books" in bdblib.bible_json_data:
+            for book in bdblib.bible_json_data["books"]:
+                if "names" in book and len(book["names"]) > 0:
+                    all_books.append(book["names"][0])
+                elif "book" in book:
+                    all_books.append(book["book"])
+        result = [book for book in all_books if partial_book.lower().strip() in book.lower().strip()]
         return result
     
     def select_book(self, event):
         selected_book = TagInputDialog(self.master, self.dbdata, topselection = True, get_tags_like = self.get_books_like, thistitle = "Select Books", bookinputdialog = True).selected_tag
-        if (selected_book is not None) and (selected_book != "") and (selected_book in bdblib.book_proper_names) and (selected_book not in self.selected_books):
+        # Check if book exists in the loaded Bible
+        if (selected_book is not None) and (selected_book != "") and (bdblib.getBookIndex(selected_book) >= 0) and (selected_book not in self.selected_books):
             self.selected_books.append(selected_book)
             self.display_attributes()
 
@@ -1708,7 +1717,9 @@ class VerseSortingPanel(ttk.Frame):
                     #eliminate all verses that aren't in the selected books
                     if (len(self.selected_books) > 0):
                         for verse in vdcopy:
-                            if (bdblib.book_proper_names[verse["start_book"]] not in bdblib.book_proper_names) and (bdblib.book_proper_names[verse["end_book"]] not in bdblib.book_proper_names):
+                            start_book_name = bdblib.getBookNameByIndex(verse["start_book"])
+                            end_book_name = bdblib.getBookNameByIndex(verse["end_book"])
+                            if (start_book_name not in self.selected_books) and (end_book_name not in self.selected_books):
                                 vd.remove(verse)
                         vdcopy = vd.copy() #remake vdcopy for the next filter
 
@@ -1986,11 +1997,11 @@ class VerseSortingPanel(ttk.Frame):
             
             try:
                 # If the user makes a DB using a version of the Bible that has the apocrypha, and then tries to pull notes about Revelation from that DB while he has a protestant Bible loaded...
-                #    then the reference to bdblib_Lib.book_proper_names[] will throw an index out of range error.
+                #    then getBookNameByIndex will return None if book index is out of range.
                 #    I am making this tool primarily for myself to use, and I don't include the apocrypha in my Bible, so I don't plan to fix this.
                 
                 verses.sort(key=lambda r: (r[0], r[1], r[2]))#sort by start book first, then chapter, then verse, so all the verses appear in order
-                self.verse_xref_list = [(bdblib.book_proper_names[q[0]]+" "+str(q[1])+":"+str(q[2]), bdblib.book_proper_names[q[3]]+" "+str(q[4])+":"+str(q[5])) for q in verses]
+                self.verse_xref_list = [(bdblib.getBookNameByIndex(q[0])+" "+str(q[1])+":"+str(q[2]), bdblib.getBookNameByIndex(q[3])+" "+str(q[4])+":"+str(q[5])) for q in verses]
             except:
                 self.verse_xref_list = []
                 print("Failed to get the verse references for that tag. This error might occur if your DB was made with a version of the Bible that had different books from the version you're currently using. For example, if the DB was made including the apocrypha, but your current Bible doesn't have it.")
