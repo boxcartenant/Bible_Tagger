@@ -2377,9 +2377,42 @@ if __name__ == "__main__":
         sys.exit(0 if success else 1)
     elif args.command == "scrape":
         print(f"Scraping Bible version: {args.version}")
-        print("\nScraping not yet implemented.")
-        print("\nThis feature will allow you to scrape Bible translations from online sources")
-        print("and convert them to JSON format for use with Bible Tagger.")
-        print("\nFor now, you can use the SWORD-to-JSON converter in the project folder.")
-        sys.exit(1)
+        print("This will download the Bible text from a website.")
+        print("This may take up to 30 minutes so that the website doesn't block requests.\n")
+        
+        try:
+            # Import the bible scraper
+            sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'bible_scraper'))
+            import bible_scraper
+            
+            # Get template path
+            template_path = os.path.join(os.path.dirname(__file__), 'bible_scraper', 'version_template.json')
+            
+            if not os.path.exists(template_path):
+                print(f"Error: Template file not found: {template_path}")
+                print("The version_template.json file is required for scraping.")
+                sys.exit(1)
+            
+            # Create scraper and download
+            print("Initializing scraper...")
+            scraper = bible_scraper.BibleScraper(args.version, template_path)
+            
+            print("Downloading Bible text...")
+            bible_data = scraper.scrape_bible()
+            
+            # Save to file
+            output_path = os.path.join(os.path.dirname(__file__), 'bibles', f'{args.version.upper()}.json')
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            
+            print(f"Saving to {output_path}...")
+            import json
+            with open(output_path, 'w', encoding='utf-8') as f:
+                json.dump(bible_data, f, ensure_ascii=False, indent=2)
+            
+            print(f"\nBible successfully scraped and saved to {output_path}")
+            sys.exit(0)
+            
+        except Exception as e:
+            print(f"\nError scraping Bible: {str(e)}")
+            sys.exit(1)
 
