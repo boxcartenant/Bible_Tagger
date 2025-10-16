@@ -469,13 +469,13 @@ class DBManager:
             try:
                 # Import the bible scraper
                 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'bible_scraper'))
-                import bible_scraper
+                from bible_scraper.bible_scraper import BibleScraper
                 
                 # Get template path
                 template_path = os.path.join(os.path.dirname(__file__), 'bible_scraper', 'version_template.json')
                 
                 # Create scraper and download
-                scraper = bible_scraper.BibleScraper(translation, template_path)
+                scraper = BibleScraper(translation, template_path)
                 bible_data = scraper.scrape_bible()
                 
                 # Save to file
